@@ -114,6 +114,25 @@ trawun --asistentes qoder,copilot    # los dos
 trawun --sin-enlaces                 # ninguno, solo AGENTS.md y .agents/skills
 ```
 
+### De dónde los recoge
+
+Trawün no solo crea la estructura: si el proyecto **ya tiene skills** en la carpeta de algún
+asistente, los unifica en `.agents/skills/` y deja el enlace de vuelta cuando hace falta.
+
+| Si el proyecto ya tiene… | Qué hace |
+|---|---|
+| `.claude/skills/` | Mueve los skills y respalda `.claude/` |
+| `.cursor/skills/` | Mueve los skills; no hace falta enlace (Cursor lee la ruta neutral) |
+| `.github/skills/` | Mueve los skills y enlaza de vuelta, si pediste `copilot` |
+| `.qoder/skills/` | Mueve los skills y enlaza de vuelta, si pediste `qoder` |
+
+Dos detalles que evitan desastres silenciosos:
+
+- Si un asistente **no lee la ruta neutral** y no le vas a dejar enlaces, Trawün **no toca sus
+  skills**: moverlos lo dejaría sin verlos. Te avisa y te dice el comando para unificarlos.
+- Copilot se detecta por `.github/skills/`, **no** por `.github/`. Casi cualquier repo tiene
+  `.github/workflows/` sin usar Copilot, y preguntar por eso sería ruido en todos lados.
+
 ## Qué hace
 
 1. **Mira qué trae el proyecto**: `CLAUDE.md`, `.claude/`, `.mcp.json`, `AGENTS.md`,

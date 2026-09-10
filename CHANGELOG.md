@@ -1,5 +1,20 @@
 # Cambios
 
+## v1.2.0
+
+- **Unifica los skills de cualquier asistente**: si el proyecto ya los tiene en `.cursor/skills/`,
+  `.github/skills/` o `.qoder/skills/`, los mueve a `.agents/skills/` y deja el enlace de vuelta
+  cuando el asistente lo necesita. Antes solo miraba `.claude/skills/`, así que esos skills
+  quedaban invisibles para DSH y compañía.
+- **Corregido un falso positivo**: Copilot se detectaba por la existencia de `.github/`, y casi
+  cualquier repositorio tiene `.github/workflows/`. Ahora se exige `.github/skills/`. Antes,
+  Trawün ofrecía crear enlaces de Copilot en proyectos que no lo usan.
+- **No mueve skills que dejarían ciego a un asistente**: si Qoder o Copilot tienen sus skills en
+  su carpeta y no pediste enlaces para ellos, se quedan donde están y te avisa. Moverlos sin
+  enlace de vuelta los haría desaparecer de ese asistente.
+- Reconoce Cursor y lo informa: lee `.agents/skills/` directamente, así que no necesita enlaces.
+- Las pruebas pasan de 50 a 58 verificaciones.
+
 ## v1.1.0
 
 - **Modo crear**: `trawun y <comando>` corre tu comando de creación, detecta la carpeta que

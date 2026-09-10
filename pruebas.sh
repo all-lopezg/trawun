@@ -173,6 +173,40 @@ mkdir -p "$P"
 comprobar "sale con código 0" "$?"
 no_existe "$P/no-debe-crearse" "no ejecutó el comando de creación"
 
+titulo "14. Proyectos que ya traen carpetas de asistentes"
+
+# .github/ con workflows NO significa que el proyecto use Copilot
+P="$BASE/solo-workflows"
+mkdir -p "$P/.github/workflows"
+printf 'x\n' > "$P/.github/workflows/ci.yml"
+( cd "$P" && hogar_limpio -y . ) >/dev/null 2>&1
+comprobar "sale con código 0" "$?"
+no_existe "$P/.github/skills" "no confundió .github/workflows con Copilot"
+
+# Skills dentro de la carpeta de Cursor
+P="$BASE/ya-cursor"
+mkdir -p "$P/.cursor/skills/mi-skill"
+printf -- '---\nname: mi-skill\n---\n' > "$P/.cursor/skills/mi-skill/SKILL.md"
+( cd "$P" && hogar_limpio -y . ) >/dev/null 2>&1
+existe    "$P/.agents/skills/mi-skill/SKILL.md" "unificó los skills de Cursor en .agents/skills"
+no_existe "$P/.cursor/skills/mi-skill" "ya no están duplicados en .cursor"
+
+# Skills dentro de la carpeta de Qoder, sin pedir enlaces
+P="$BASE/ya-qoder-sin"
+mkdir -p "$P/.qoder/skills/mi-skill"
+printf -- '---\nname: mi-skill\n---\n' > "$P/.qoder/skills/mi-skill/SKILL.md"
+( cd "$P" && hogar_limpio -y --sin-enlaces . ) >/dev/null 2>&1
+existe    "$P/.qoder/skills/mi-skill/SKILL.md" "sin enlaces NO mueve los skills de Qoder (lo dejaría ciego)"
+no_existe "$P/.agents/skills/mi-skill" "no los unificó en ese caso"
+
+# Skills dentro de la carpeta de Copilot, pidiendo enlaces
+P="$BASE/ya-copilot"
+mkdir -p "$P/.github/skills/mi-skill"
+printf -- '---\nname: mi-skill\n---\n' > "$P/.github/skills/mi-skill/SKILL.md"
+( cd "$P" && hogar_limpio -y --asistentes copilot . ) >/dev/null 2>&1
+existe "$P/.agents/skills/mi-skill/SKILL.md" "unificó los skills de Copilot"
+existe "$P/.github/skills/mi-skill/SKILL.md" "dejó el enlace de vuelta para Copilot"
+
 # ---------------------------------------------------------------------------
 printf '\n────────────────────────────────────────────\n'
 if [ "$FALLOS" -gt 0 ]; then

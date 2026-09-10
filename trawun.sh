@@ -14,7 +14,7 @@
 #
 set -eu
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 # ---------------------------------------------------------------------------
 # Presentación
@@ -176,6 +176,37 @@ carpeta_asistente() {
     esac
 }
 
+# Carpetas donde cada asistente guarda sus skills. Todas se unifican en
+# .agents/skills, que es lo que lee la mayoría.
+FUENTES_SKILLS=".claude/skills .cursor/skills .github/skills .qoder/skills"
+
+asistente_de_carpeta() {
+    # A qué asistente pertenece una carpeta de skills (vacío = neutral).
+    case "$1" in
+        .claude/skills)  printf 'claude' ;;
+        .cursor/skills)  printf 'cursor' ;;
+        .github/skills)  printf 'copilot' ;;
+        .qoder/skills)   printf 'qoder' ;;
+        *)               printf '' ;;
+    esac
+}
+
+necesita_enlace() {
+    # ¿Este asistente lee .agents/skills por su cuenta?
+    # Cursor sí (lo documenta); Qoder y Copilot no, usan carpeta propia.
+    case "$1" in
+        qoder|copilot) return 0 ;;
+        *)             return 1 ;;
+    esac
+}
+
+esta_en_asistentes() {
+    for asistente_elegido in $ASISTENTES; do
+        [ "$asistente_elegido" = "$1" ] && return 0
+    done
+    return 1
+}
+
 asistente_instalado() {
     # Pista para poder preguntar: ¿está instalado en esta máquina?
     case "$1" in
@@ -185,11 +216,21 @@ asistente_instalado() {
     esac
 }
 
+usa_asistente() {
+    # ¿El proyecto usa este asistente? Se mira su carpeta de skills, no la
+    # carpeta a secas: un .github/ con workflows no significa usar Copilot.
+    case "$1" in
+        qoder)   [ -d .qoder ] ;;          # .qoder solo lo crea Qoder
+        copilot) [ -d .github/skills ] ;;  # .github/ lo tiene casi cualquier repo
+        *)       return 1 ;;
+    esac
+}
+
 asistentes_detectados() {
-    # Los que están instalados o que ya tienen su carpeta en el proyecto.
+    # Instalados en la máquina, o ya presentes en este proyecto.
     encontrados=""
     for asistente in $ASISTENTES_CONOCIDOS; do
-        if asistente_instalado "$asistente" || [ -d "$(dirname "$(carpeta_asistente "$asistente")")" ]; then
+        if asistente_instalado "$asistente" || usa_asistente "$asistente"; then
             encontrados="$encontrados $asistente"
         fi
     done
@@ -322,6 +363,7 @@ mostrar_plan() {
     if [ "$HAY_MCP" = "si" ]; then ok ".mcp.json (servidores MCP)"; else nota "sin .mcp.json"; fi
     if [ "$HAY_AGENTS_MD" = "si" ]; then ok "AGENTS.md (ya está en el nombre neutral)"; fi
     if [ "$HAY_AGENTS_SKILLS" = "si" ]; then ok ".agents/skills ($(contar_skills .agents/skills) skills)"; fi
+    if [ -d .cursor ]; then ok ".cursor/ (usa Cursor: lee .agents/skills, no necesita enlaces)"; fi
     if [ "$HAY_BOOST" = "si" ]; then ok "Laravel Boost (genera guías y skills)"; fi
 
     printf '\n  %sLo que voy a hacer:%s\n' "$TITULO" "$FIN"
@@ -336,12 +378,18 @@ mostrar_plan() {
         ok "Redirigir Boost a las rutas neutrales y apagar su MCP"
     fi
 
-    if [ "$HAY_CLAUDE_DIR" = "si" ]; then
-        if [ "$HAY_BOOST" = "si" ]; then
-            ok "Respaldar .claude/ (Boost lo vuelve a generar en su sitio nuevo)"
+    for carpeta_plan in $FUENTES_SKILLS; do
+        [ "$(contar_skills "$carpeta_plan")" = "0" ] && continue
+        asistente_plan="$(asistente_de_carpeta "$carpeta_plan")"
+        if necesita_enlace "$asistente_plan" && ! esta_en_asistentes "$asistente_plan"; then
+            nota "Dejar los skills de $carpeta_plan donde están ($asistente_plan no lee la ruta neutral)"
         else
-            ok "Mover los skills de .claude/skills  ->  .agents/skills"
+            ok "Mover los skills de $carpeta_plan  ->  .agents/skills"
         fi
+    done
+
+    if [ "$HAY_CLAUDE_DIR" = "si" ]; then
+        ok "Respaldar .claude/ en .agentes-respaldo/ (no usas Claude Code)"
     fi
 
     if [ -n "$ASISTENTES" ]; then
@@ -484,46 +532,68 @@ file_put_contents($ruta, json_encode($datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_
 }
 
 paso_skills() {
-    [ "$HAY_CLAUDE_DIR" = "si" ] || return 0
-    [ "$HAY_BOOST" = "si" ] && return 0   # Boost ya los regeneró; .claude fue al respaldo
-
-    paso "3/6  Skills y configuración de Claude Code"
+    paso "3/6  Skills de cada asistente"
 
     if [ "$DRY_RUN" = "si" ]; then
-        if [ -d .claude/skills ]; then
-            nota "[dry-run] movería $(contar_skills .claude/skills) skill(s) a .agents/skills"
+        for carpeta in $FUENTES_SKILLS; do
+            cantidad="$(contar_skills "$carpeta")"
+            [ "$cantidad" = "0" ] && continue
+            asistente="$(asistente_de_carpeta "$carpeta")"
+            if necesita_enlace "$asistente" && ! esta_en_asistentes "$asistente"; then
+                nota "[dry-run] dejaría $cantidad skill(s) en $carpeta"
+                nota "  ($asistente no lee .agents/skills; moverlos sin enlace lo dejaría ciego)"
+            else
+                nota "[dry-run] movería $cantidad skill(s) de $carpeta a .agents/skills"
+            fi
+        done
+        if [ "$HAY_CLAUDE_DIR" = "si" ]; then
+            nota "[dry-run] movería .claude/ a .agentes-respaldo/"
         fi
-        nota "[dry-run] movería .claude/ a .agentes-respaldo/"
         return 0
     fi
 
-    if [ -d .claude/skills ]; then
-        mkdir -p .agents/skills
-        for origen in .claude/skills/*/; do
+    movidos=0
+    for carpeta in $FUENTES_SKILLS; do
+        [ -d "$carpeta" ] || continue
+        asistente="$(asistente_de_carpeta "$carpeta")"
+
+        # Si el asistente no lee la ruta neutral y no vamos a dejarle enlaces,
+        # mover sus skills lo dejaría sin verlos: mejor no tocarlos y avisar.
+        if necesita_enlace "$asistente" && ! esta_en_asistentes "$asistente"; then
+            if [ "$(contar_skills "$carpeta")" != "0" ]; then
+                aviso "$carpeta tiene skills y $asistente no lee .agents/skills"
+                nota "los dejo donde están; para unificarlos: trawun --asistentes $asistente"
+            fi
+            continue
+        fi
+
+        for origen in "$carpeta"/*/; do
             [ -d "$origen" ] || continue
             nombre="$(basename "$origen")"
             if [ -e ".agents/skills/$nombre" ]; then
-                aviso "$nombre ya existe en .agents/skills: no lo piso"
-            else
-                mv "$origen" ".agents/skills/$nombre"
-                ok "$nombre"
+                aviso "$nombre ya existe en .agents/skills: no lo piso (venía de $carpeta)"
+                continue
             fi
+            mkdir -p .agents/skills
+            mv "$origen" ".agents/skills/$nombre"
+            ok "$nombre  ($carpeta -> .agents/skills)"
+            movidos=$((movidos + 1))
         done
-    else
-        aviso ".claude/ no tiene skills que mover"
+    done
+
+    if [ "$movidos" = "0" ] && [ "$HAY_CLAUDE_DIR" = "no" ]; then
+        nota "no encontré skills que mover"
     fi
 
-    # Todo lo demás dentro de .claude (comandos, agentes propios) también es
-    # configuración de Claude Code, así que va al respaldo. Se nombra antes para
-    # que no sea una sorpresa, y queda recuperable con su LEEME.
-    quedan="$(find .claude -mindepth 1 -maxdepth 1 ! -name skills 2>/dev/null | sed 's|^\.claude/||' | tr '\n' ' ')"
-    if [ -n "$quedan" ]; then
-        aviso "además va al respaldo, y no son skills: $quedan"
-        nota "si te sirven, rescátalos desde .agentes-respaldo/ (Qoder tiene su propio"
-        nota "mecanismo de comandos y de agentes, pero no los convierto automáticamente)"
+    # Claude Code sí se respalda entero: este proyecto no lo usa, y sus comandos
+    # y agentes propios no aplican. Queda recuperable en .agentes-respaldo/.
+    if [ "$HAY_CLAUDE_DIR" = "si" ]; then
+        quedan="$(find .claude -mindepth 1 -maxdepth 1 ! -name skills 2>/dev/null | sed 's|^\.claude/||' | tr '\n' ' ')"
+        if [ -n "$quedan" ]; then
+            aviso "además va al respaldo, y no son skills: $quedan"
+        fi
+        respaldar ".claude" "configuración de Claude Code"
     fi
-
-    respaldar ".claude" "configuración de Claude Code"
 }
 
 paso_enlaces() {
@@ -537,10 +607,12 @@ paso_enlaces() {
 
     if [ "$DRY_RUN" = "si" ]; then
         # En simulación .agents/skills puede no existir aún: se cuenta lo que
-        # quedaría ahí después de mover los skills de .claude.
+        # quedaría ahí después de mover los skills.
         previstos="$(contar_skills .agents/skills)"
         if [ "$previstos" = "0" ]; then
-            previstos="$(contar_skills .claude/skills)"
+            for carpeta_sim in $FUENTES_SKILLS; do
+                previstos=$((previstos + $(contar_skills "$carpeta_sim")))
+            done
         fi
         for asistente in $ASISTENTES; do
             nota "[dry-run] crearía $previstos enlace(s) en $(carpeta_asistente "$asistente")"
@@ -575,8 +647,8 @@ paso_enlaces() {
                 enlazados=$((enlazados + 1))
             else
                 # Hay sistemas que no permiten enlaces (Windows sin permisos,
-                # algunos sistemas de archivos). Ahí se copia: ocupa más y hay
-                # que volver a correr Trawün si el skill cambia, pero se ve igual.
+                # algunos sistemas de archivos). Ahí se copia: ocupa más, y hay
+                # que volver a correr Trawün si el skill cambia.
                 rm -rf "$destino/$nombre"
                 cp -R ".agents/skills/$nombre" "$destino/$nombre"
                 copiados=$((copiados + 1))
