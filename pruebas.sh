@@ -207,6 +207,18 @@ printf -- '---\nname: mi-skill\n---\n' > "$P/.github/skills/mi-skill/SKILL.md"
 existe "$P/.agents/skills/mi-skill/SKILL.md" "unificó los skills de Copilot"
 existe "$P/.github/skills/mi-skill/SKILL.md" "dejó el enlace de vuelta para Copilot"
 
+titulo "15. Proyecto ya unificado (la forma que deja Trawün)"
+P="$BASE/ya-unificado"
+mkdir -p "$P/.agents/skills/insforge" "$P/.qoder/skills"
+printf -- '---\nname: insforge\n---\n' > "$P/.agents/skills/insforge/SKILL.md"
+ln -s ../../.agents/skills/insforge "$P/.qoder/skills/insforge"
+printf '# Proyecto\n' > "$P/AGENTS.md"
+( cd "$P" && hogar_limpio -y --asistentes qoder . ) >/dev/null 2>&1
+comprobar "sale con código 0" "$?"
+existe "$P/.qoder/skills/insforge/SKILL.md" "el enlace sigue resolviendo"
+comprobar "no duplicó el skill" "$( [ "$(find "$P/.agents/skills" -type f | wc -l | tr -d ' ')" = "1" ] && echo 0 || echo 1 )"
+comprobar "el enlace sigue siendo enlace" "$( [ -L "$P/.qoder/skills/insforge" ] && echo 0 || echo 1 )"
+
 # ---------------------------------------------------------------------------
 printf '\n────────────────────────────────────────────\n'
 if [ "$FALLOS" -gt 0 ]; then

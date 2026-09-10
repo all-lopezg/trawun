@@ -14,7 +14,7 @@
 #
 set -eu
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 # ---------------------------------------------------------------------------
 # Presentación
@@ -381,7 +381,20 @@ mostrar_plan() {
     for carpeta_plan in $FUENTES_SKILLS; do
         [ "$(contar_skills "$carpeta_plan")" = "0" ] && continue
         asistente_plan="$(asistente_de_carpeta "$carpeta_plan")"
-        if necesita_enlace "$asistente_plan" && ! esta_en_asistentes "$asistente_plan"; then
+
+        # Cuántos de esos skills no están ya en la ruta neutral. Si no queda
+        # ninguno, el plan no debe anunciar una mudanza que no va a ocurrir.
+        pendientes=0
+        for origen_plan in "$carpeta_plan"/*/; do
+            [ -d "$origen_plan" ] || continue
+            if [ ! -e ".agents/skills/$(basename "$origen_plan")" ]; then
+                pendientes=$((pendientes + 1))
+            fi
+        done
+
+        if [ "$pendientes" = "0" ]; then
+            nota "Los skills de $carpeta_plan ya están en .agents/skills: nada que mover"
+        elif necesita_enlace "$asistente_plan" && ! esta_en_asistentes "$asistente_plan"; then
             nota "Dejar los skills de $carpeta_plan donde están ($asistente_plan no lee la ruta neutral)"
         else
             ok "Mover los skills de $carpeta_plan  ->  .agents/skills"

@@ -1,5 +1,13 @@
 # Cambios
 
+## v1.2.1
+
+- El plan ya no anuncia una mudanza que no va a ocurrir: si los skills de un asistente ya
+  están unificados en `.agents/skills/`, lo dice en vez de prometer moverlos. Pasa cada vez
+  que corres Trawün por segunda vez sobre el mismo proyecto.
+- Prueba nueva con la forma exacta que deja Trawün (enlaces en `.qoder/skills` apuntando a
+  `.agents/skills`), para garantizar que volver a correrlo no duplica ni rompe nada.
+
 ## v1.2.0
 
 - **Unifica los skills de cualquier asistente**: si el proyecto ya los tiene en `.cursor/skills/`,
