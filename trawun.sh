@@ -14,7 +14,7 @@
 #
 set -eu
 
-VERSION="1.2.2"
+VERSION="1.2.3"
 
 # ---------------------------------------------------------------------------
 # Presentación
@@ -511,14 +511,14 @@ respaldar() {
     fi
 
     mkdir -p "$RESPALDO"
-    if [ ! -f "$RESPALDO/LEEME.txt" ]; then
+    if [ ! -f "$RESPALDO/README.txt" ]; then
         {
             printf 'Respaldo hecho por Trawün el %s\n\n' "$SELLO"
             printf 'Aquí está lo que el proyecto traía para Claude Code y que Trawün\n'
             printf 'movió para dejar las rutas neutrales. Nada se borró.\n\n'
             printf 'Para revertir: mueve estas carpetas a su lugar original.\n'
             printf 'Si todo funciona bien, puedes borrar esta carpeta entera.\n'
-        } > "$RESPALDO/LEEME.txt"
+        } > "$RESPALDO/README.txt"
     fi
 
     mv "$1" "$RESPALDO/"
@@ -771,11 +771,39 @@ paso_mcp() {
     fi
 }
 
+migrar_leeme() {
+    # El mismo archivo tuvo dos nombres antes: la 1.2.1 lo dejó en
+    # .agents/skills/ (donde cualquier .md suelto cuenta como skill) y la 1.2.2
+    # como .agents/LEEME.md. El nombre en inglés es la convención del resto
+    # (AGENTS.md, README.md), así que se renombra: nada se pisa ni se borra.
+    for viejo_leeme in ".agents/skills/LEEME.md" ".agents/LEEME.md"; do
+        [ -f "$viejo_leeme" ] || continue
+
+        # Solo si es el nuestro: alguien puede tener un archivo con ese nombre.
+        if [ "$(head -1 "$viejo_leeme" 2>/dev/null)" != "# Skills de este proyecto" ]; then
+            continue
+        fi
+
+        if [ -e .agents/README.md ]; then
+            # Ya hay uno bueno. El viejo igual no puede quedarse dentro de la
+            # raíz de skills, así que se guarda en el respaldo.
+            respaldar "$viejo_leeme" "quedó viejo: ya existe .agents/README.md"
+            continue
+        fi
+
+        mv "$viejo_leeme" .agents/README.md
+        ok "$viejo_leeme  ->  .agents/README.md (nombre en inglés, como el resto)"
+    done
+}
+
 paso_sembrar() {
     paso "Lo que faltaba por crear"
 
     if [ "$DRY_RUN" = "si" ]; then
-        nota "[dry-run] crearía AGENTS.md, .agents/skills y .agents/LEEME.md si faltan"
+        nota "[dry-run] crearía AGENTS.md, .agents/skills y .agents/README.md si faltan"
+        if [ -f .agents/skills/LEEME.md ] || [ -f .agents/LEEME.md ]; then
+            nota "[dry-run] renombraría el LEEME que dejaron versiones anteriores"
+        fi
         return 0
     fi
 
@@ -808,15 +836,17 @@ MD
         ok "AGENTS.md creado (con secciones para completar)"
     fi
 
+    migrar_leeme
+
     if [ ! -d .agents/skills ]; then
         mkdir -p .agents/skills
         ok ".agents/skills/ creado"
     fi
 
-    # El LEEME va fuera de .agents/skills a propósito: ahí dentro, cualquier .md
+    # El README va fuera de .agents/skills a propósito: ahí dentro, cualquier .md
     # suelto cuenta como skill de un solo archivo, y este no lo es (los
     # asistentes avisan de que le falta el frontmatter en cada sesión).
-    if [ ! -f .agents/LEEME.md ]; then
+    if [ ! -f .agents/README.md ]; then
         {
             printf '# Skills de este proyecto\n\n'
             printf 'Cada skill vive en su propia carpeta: `.agents/skills/<nombre>/SKILL.md`, con\n'
@@ -825,8 +855,8 @@ MD
             printf 'global: si los pusieras en tu carpeta de usuario, aparecerían en todos los\n'
             printf 'demás proyectos tuyos, incluso donde no tienen nada que hacer.\n\n'
             printf '%s\n' "$(frase_skills)"
-        } > .agents/LEEME.md
-        ok ".agents/LEEME.md creado (explica la convención, fuera de la raíz de skills)"
+        } > .agents/README.md
+        ok ".agents/README.md creado (explica la convención, fuera de la raíz de skills)"
     fi
 
     [ -f AGENTS.md ] && [ -d .agents/skills ] || return 0

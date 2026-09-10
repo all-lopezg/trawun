@@ -1,5 +1,17 @@
 # Cambios
 
+## v1.2.3
+
+- **El archivo de la convención se llama `.agents/README.md`**, no `.agents/LEEME.md`: el
+  nombre en inglés es el del resto (`AGENTS.md`, `README.md`, `CHANGELOG.md`). El que explica
+  el respaldo pasa de `LEEME.txt` a `README.txt` por el mismo motivo.
+- **Renombra los que dejaron las versiones anteriores**: el `.agents/skills/LEEME.md` de la
+  1.2.1 (que ahí dentro cuenta como skill y ensucia el descubrimiento) y el `.agents/LEEME.md`
+  de la 1.2.2. Nunca pisa un archivo del usuario: si ya existe un `.agents/README.md`, el viejo
+  va a `.agentes-respaldo/`. Solo toca archivos que empiezan con el encabezado que escribe
+  Trawün, así que un archivo con ese nombre puesto por vos se queda como está.
+- Las pruebas pasan de 89 a 100 verificaciones.
+
 ## v1.2.2
 
 - **Un proyecto que no trae nada ya no empieza en "3/6"**: los pasos se numeran sobre los que

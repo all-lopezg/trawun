@@ -27,7 +27,7 @@ Eso es todo. Antes de tocar nada, Trawün:
 
 - **Te muestra el plan y te pide confirmación.** Nada pasa sin que lo autorices.
 - **No escribe fuera del proyecto.** Nunca toca tu carpeta de usuario.
-- **No borra: respalda.** Lo que sobra va a `.agentes-respaldo/`, con un `LEEME.txt`.
+- **No borra: respalda.** Lo que sobra va a `.agentes-respaldo/`, con un `README.txt`.
 - **No hace commit.** Al final te muestra el diff y decides tú.
 - **No inventa reglas.** Si ya tienes `AGENTS.md`, lo respeta.
 
@@ -138,7 +138,7 @@ Dos detalles que evitan desastres silenciosos:
 1. **Mira qué trae el proyecto**: `CLAUDE.md`, `.claude/`, `.mcp.json`, `AGENTS.md`,
    `.agents/`, `.qoder/`, y si usa Laravel Boost.
 2. **Te muestra el plan y pide confirmación** antes de tocar nada.
-3. **Respalda lo que va a mover** en `.agentes-respaldo/<fecha>/`, con un `LEEME.txt`
+3. **Respalda lo que va a mover** en `.agentes-respaldo/<fecha>/`, con un `README.txt`
    que explica cómo revertirlo.
 4. **Mueve las reglas** de `CLAUDE.md` a `AGENTS.md`, conservando el contenido y la
    historia de git.
@@ -158,6 +158,7 @@ Claude Code, proyecto vacío, o proyecto ya adaptado.
 ```
 tu-proyecto/
 ├── AGENTS.md            ← las reglas, que leen DSH, Qoder, Codex, Cursor, Zed…
+├── .agents/README.md    ← la convención de skills, por si se te olvida
 ├── .agents/skills/      ← los skills reales, una sola copia
 │   └── mi-skill/SKILL.md
 ├── .qoder/skills/       ← enlaces, solo si pediste Qoder (o .github/skills para Copilot)

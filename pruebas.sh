@@ -105,10 +105,10 @@ no_existe "$P/.qoder" "no inventó enlaces que nadie pidió"
 comprobar "numera del 1 al 4 los pasos que corren" \
     "$( pasos_bien_numerados "$salida" 4 && echo 0 || echo 1 )"
 
-# El LEEME de la convención va fuera de .agents/skills: ahí dentro cualquier .md
+# El README de la convención va fuera de .agents/skills: ahí dentro cualquier .md
 # suelto se descubre como skill, y los asistentes avisan de que le falta el
 # frontmatter en cada sesión.
-existe    "$P/.agents/LEEME.md" "el LEEME que explica la convención está en .agents/"
+existe    "$P/.agents/README.md" "el README que explica la convención está en .agents/"
 no_existe "$P/.agents/skills/LEEME.md" "no ensucia la raíz de skills"
 comprobar "el AGENTS.md sembrado no promete enlaces" \
     "$( grep -q '\.qoder' "$P/AGENTS.md" && echo 1 || echo 0 )"
@@ -140,8 +140,8 @@ comprobar "el plan anuncia los enlaces que sí va a crear" \
     "$( printf '%s' "$salida" | grep -q 'Crear los enlaces de .qoder/skills' && echo 0 || echo 1 )"
 comprobar "el AGENTS.md menciona el enlace que sí existe" \
     "$( grep -q '\.qoder/skills/' "$P/AGENTS.md" && echo 0 || echo 1 )"
-comprobar "el LEEME menciona el enlace que sí existe" \
-    "$( grep -q '\.qoder/skills/' "$P/.agents/LEEME.md" && echo 0 || echo 1 )"
+comprobar "el README menciona el enlace que sí existe" \
+    "$( grep -q '\.qoder/skills/' "$P/.agents/README.md" && echo 0 || echo 1 )"
 existe "$P/.qoder/skills/api-docs/SKILL.md" "y el enlace está de verdad"
 
 # Con dos asistentes, la frase tiene que nombrar las dos carpetas de enlaces.
@@ -173,6 +173,44 @@ comprobar "sale con error si quedaron enlaces rotos" "$( [ "$?" = "1" ] && echo 
 comprobar "y lo reporta" \
     "$( printf '%s' "$salida" | grep -qE 'enlace\(s\) roto\(s\)|esperaba 0' && echo 0 || echo 1 )"
 comprobar "sin inventar enlaces nuevos" "$( [ ! -e "$P/.qoder/skills/fantasma" ] && echo 0 || echo 1 )"
+
+# El archivo de la convención se llamó LEEME en dos versiones anteriores. El
+# nombre en inglés es la convención del resto, así que se renombra — y el que
+# quedó dentro de la raíz de skills sale de ahí, que es donde estorba.
+P="$BASE/leeme-121"
+mkdir -p "$P/.agents/skills/api-docs"
+printf -- '---\nname: api-docs\ndescription: Prueba.\n---\n' > "$P/.agents/skills/api-docs/SKILL.md"
+printf '# Skills de este proyecto\n\nLo que dejó la 1.2.1.\n' > "$P/.agents/skills/LEEME.md"
+printf '# Reglas\n' > "$P/AGENTS.md"
+( cd "$P" && hogar_limpio -y --asistentes qoder . ) >/dev/null 2>&1
+comprobar "sale con código 0" "$?"
+no_existe "$P/.agents/skills/LEEME.md" "sacó el LEEME de la raíz de skills"
+existe    "$P/.agents/README.md" "quedó como .agents/README.md"
+comprobar "y conservó el contenido" \
+    "$( grep -q 'Lo que dejó la 1.2.1' "$P/.agents/README.md" && echo 0 || echo 1 )"
+
+P="$BASE/leeme-122"
+mkdir -p "$P/.agents/skills/api-docs"
+printf -- '---\nname: api-docs\ndescription: Prueba.\n---\n' > "$P/.agents/skills/api-docs/SKILL.md"
+printf '# Skills de este proyecto\n\nLo que dejó la 1.2.2.\n' > "$P/.agents/LEEME.md"
+printf '# Reglas\n' > "$P/AGENTS.md"
+( cd "$P" && hogar_limpio -y --asistentes qoder . ) >/dev/null 2>&1
+comprobar "sale con código 0" "$?"
+existe    "$P/.agents/README.md" "el LEEME de la 1.2.2 también se renombra"
+no_existe "$P/.agents/LEEME.md" "y ya no queda el nombre viejo"
+
+# Si ya hay un README propio del usuario, el viejo no se pisa: va al respaldo.
+P="$BASE/leeme-propio"
+mkdir -p "$P/.agents/skills/api-docs"
+printf -- '---\nname: api-docs\ndescription: Prueba.\n---\n' > "$P/.agents/skills/api-docs/SKILL.md"
+printf '# Skills de este proyecto\n\nViejo.\n' > "$P/.agents/skills/LEEME.md"
+printf '# Lo que escribió el usuario\n' > "$P/.agents/README.md"
+( cd "$P" && hogar_limpio -y --asistentes qoder . ) >/dev/null 2>&1
+comprobar "sale con código 0" "$?"
+comprobar "no pisó el README del usuario" \
+    "$( grep -q 'Lo que escribió el usuario' "$P/.agents/README.md" && echo 0 || echo 1 )"
+no_existe "$P/.agents/skills/LEEME.md" "el viejo salió de la raíz de skills"
+existe    "$P/.agentes-respaldo" "y quedó guardado en el respaldo"
 
 titulo "5. Simulación (--dry-run) no toca nada"
 P="$BASE/simular"
