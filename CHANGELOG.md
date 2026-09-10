@@ -1,5 +1,24 @@
 # Cambios
 
+## v1.2.2
+
+- **Un proyecto que no trae nada ya no empieza en "3/6"**: los pasos se numeran sobre los que
+  de verdad corren. Antes el número venía escrito en cada título, así que en un proyecto sin
+  `CLAUDE.md` ni Boost la salida arrancaba en `3/6` y parecía que dos pasos habían fallado.
+- **El `LEEME` de la convención se muda a `.agents/LEEME.md`**: dentro de `.agents/skills/`
+  cualquier `.md` suelto cuenta como skill de un solo archivo, y los asistentes avisaban
+  ("missing YAML frontmatter") en cada sesión de cada proyecto nuevo.
+- **Los archivos sembrados ya no prometen enlaces que no existen**: el `AGENTS.md` y el `LEEME`
+  decían siempre que `.qoder/skills/` tenía enlaces, incluso con `--sin-enlaces`, sin Qoder o
+  sin un solo skill. Ahora la frase se arma con los enlaces que de verdad se crean.
+- **Sin skills no se crea la carpeta del asistente**: `.qoder/skills/` vacío no servía de nada y
+  además hacía que la próxima corrida creyera que el proyecto ya usa Qoder (se detecta por su
+  carpeta). El plan y el resumen tampoco anuncian enlaces en ese caso, y la verificación ya no
+  dice "todos los enlaces resuelven" cuando no hay ninguno.
+- **Fuera de un repositorio git ya no se sugiere `git status && git diff`**: en un proyecto
+  nuevo sin git el cierre daba un error. Ahora explica cómo iniciarlo.
+- Limpieza: una asignación duplicada de `PROYECTO` que había quedado pegada dos veces.
+
 ## v1.2.1
 
 - El plan ya no anuncia una mudanza que no va a ocurrir: si los skills de un asistente ya

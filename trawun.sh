@@ -14,7 +14,7 @@
 #
 set -eu
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 
 # ---------------------------------------------------------------------------
 # Presentación
@@ -93,7 +93,15 @@ ok()    { printf '     %s✓%s %s\n' "$OK" "$FIN" "$1"; }
 aviso() { printf '     %s!%s %s\n' "$AVISO" "$FIN" "$1"; }
 falla() { printf '     %s✗%s %s\n' "$ERROR" "$FIN" "$1"; }
 nota()  { printf '       %s%s%s\n' "$GRIS" "$1" "$FIN"; }
-paso()  { printf '\n%s==> %s%s\n' "$TITULO" "$1" "$FIN"; }
+# Los pasos se numeran sobre los que de verdad van a correr. Antes el número
+# venía escrito en cada título, así que un proyecto sin CLAUDE.md ni Boost
+# empezaba en "3/6" y parecía que dos pasos habían fallado en silencio.
+PASO_NUM=0
+PASOS_TOTAL=0
+paso() {
+    PASO_NUM=$((PASO_NUM + 1))
+    printf '\n%s==> %s/%s  %s%s\n' "$TITULO" "$PASO_NUM" "$PASOS_TOTAL" "$1" "$FIN"
+}
 
 # ---------------------------------------------------------------------------
 # Preguntas
@@ -324,7 +332,7 @@ if [ "$MODO" = "adaptar" ] && [ -n "$RUTA" ]; then
     cd "$RUTA"
 fi
 
-PROYECTO="$(pwd)"PROYECTO="$(pwd)"
+PROYECTO="$(pwd)"
 
 # ---------------------------------------------------------------------------
 # Detección
@@ -350,6 +358,60 @@ contar_skills() {
         find "$1" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | wc -l | tr -d ' '
     else
         echo "0"
+    fi
+}
+
+skills_previstos() {
+    # Cuántos skills van a quedar en .agents/skills: los que ya están más los que
+    # se van a mover. Solo se usa para decidir si hay algo que enlazar (los
+    # duplicados que no se pisan cuentan de más, y da igual: nunca da 0 con
+    # skills de verdad).
+    total_previsto="$(contar_skills .agents/skills)"
+    for carpeta_prevista in $FUENTES_SKILLS; do
+        asistente_previsto="$(asistente_de_carpeta "$carpeta_prevista")"
+        if necesita_enlace "$asistente_previsto" && ! esta_en_asistentes "$asistente_previsto"; then
+            continue
+        fi
+        total_previsto=$((total_previsto + $(contar_skills "$carpeta_prevista")))
+    done
+    printf '%s' "$total_previsto"
+}
+
+prever_pasos() {
+    # Cuántos pasos van a imprimir título, para poder numerarlos. Las condiciones
+    # son las mismas que usan las funciones de más abajo: si cambia una, cambia
+    # la otra, o la numeración vuelve a mentir.
+    total=0
+    if [ "$HAY_CLAUDE_MD" = "si" ] && [ "$HAY_AGENTS_MD" = "no" ]; then
+        total=$((total + 1))
+    fi
+    if [ "$HAY_BOOST" = "si" ]; then
+        total=$((total + 1))
+    fi
+    total=$((total + 3))         # skills, siembra y enlaces: siempre dicen algo
+    if [ "$HAY_MCP" = "si" ]; then
+        total=$((total + 1))
+    fi
+    PASOS_TOTAL=$((total + 1))   # la verificación del final
+}
+
+frase_skills() {
+    # Qué decir de los skills en los archivos que sembramos. Solo se afirma que
+    # hay enlaces si de verdad se van a crear: prometerlos en el AGENTS.md de un
+    # proyecto sin skills deja una mentira en el archivo que lee el asistente.
+    if [ -n "$ASISTENTES" ] && [ "$(contar_skills .agents/skills)" != "0" ]; then
+        lista_enlaces=""
+        for asistente_frase in $ASISTENTES; do
+            enlace_frase="$(printf '`%s/`' "$(carpeta_asistente "$asistente_frase")")"
+            if [ -z "$lista_enlaces" ]; then
+                lista_enlaces="$enlace_frase"
+            else
+                lista_enlaces="$lista_enlaces, $enlace_frase"
+            fi
+        done
+        printf 'Los skills de este proyecto viven en `.agents/skills/`, con enlaces en %s.' "$lista_enlaces"
+    else
+        printf 'Los skills de este proyecto viven en `.agents/skills/`; los asistentes\nque leen esa ruta los ven sin configurar nada más.'
     fi
 }
 
@@ -406,9 +468,15 @@ mostrar_plan() {
     fi
 
     if [ -n "$ASISTENTES" ]; then
-        for asistente in $ASISTENTES; do
-            ok "Crear los enlaces de $(carpeta_asistente "$asistente") hacia .agents/skills"
-        done
+        # Solo se anuncia lo que va a pasar: en un proyecto sin skills, los
+        # enlaces no se crean y el plan no puede prometerlos.
+        if [ "$(skills_previstos)" = "0" ]; then
+            nota "Enlaces de asistente: no hay skills todavía, no hay nada que enlazar"
+        else
+            for asistente in $ASISTENTES; do
+                ok "Crear los enlaces de $(carpeta_asistente "$asistente") hacia .agents/skills"
+            done
+        fi
     else
         nota "sin enlaces de asistente (solo AGENTS.md y .agents/skills)"
     fi
@@ -431,6 +499,7 @@ mostrar_plan() {
 SELLO="$(date '+%Y%m%d-%H%M%S')"
 RESPALDO=".agentes-respaldo/$SELLO"
 RESPALDADOS=0
+ENLACES_HECHOS=0
 
 respaldar() {
     # $1 = ruta a mover, $2 = motivo
@@ -461,7 +530,7 @@ paso_reglas() {
     [ "$HAY_CLAUDE_MD" = "si" ] || return 0
     [ "$HAY_AGENTS_MD" = "si" ] && return 0
 
-    paso "1/6  Reglas: CLAUDE.md -> AGENTS.md"
+    paso "Reglas: CLAUDE.md -> AGENTS.md"
 
     if [ "$DRY_RUN" = "si" ]; then
         nota "[dry-run] renombraría CLAUDE.md a AGENTS.md"
@@ -479,7 +548,7 @@ paso_reglas() {
 paso_boost() {
     [ "$HAY_BOOST" = "si" ] || return 0
 
-    paso "2/6  Laravel Boost: redirigir sus rutas"
+    paso "Laravel Boost: redirigir sus rutas"
 
     if [ "$DRY_RUN" = "si" ]; then
         nota "[dry-run] escribiría config/boost.php y pondría \"mcp\": false en boost.json"
@@ -545,7 +614,7 @@ file_put_contents($ruta, json_encode($datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_
 }
 
 paso_skills() {
-    paso "3/6  Skills de cada asistente"
+    paso "Skills de cada asistente"
 
     if [ "$DRY_RUN" = "si" ]; then
         for carpeta in $FUENTES_SKILLS; do
@@ -611,31 +680,39 @@ paso_skills() {
 
 paso_enlaces() {
     if [ -z "$ASISTENTES" ]; then
-        paso "5/6  Enlaces de asistentes"
+        paso "Enlaces de asistentes"
         nota "ninguno: DSH, Codex, Cursor, Zed y compañía leen .agents/skills directo"
         return 0
     fi
 
-    paso "5/6  Enlaces de asistentes"
+    paso "Enlaces de asistentes"
 
     if [ "$DRY_RUN" = "si" ]; then
         # En simulación .agents/skills puede no existir aún: se cuenta lo que
         # quedaría ahí después de mover los skills.
-        previstos="$(contar_skills .agents/skills)"
+        previstos="$(skills_previstos)"
         if [ "$previstos" = "0" ]; then
-            for carpeta_sim in $FUENTES_SKILLS; do
-                previstos=$((previstos + $(contar_skills "$carpeta_sim")))
+            nota "[dry-run] no crearía enlaces: todavía no hay skills"
+        else
+            for asistente in $ASISTENTES; do
+                nota "[dry-run] crearía $previstos enlace(s) en $(carpeta_asistente "$asistente")"
             done
         fi
-        for asistente in $ASISTENTES; do
-            nota "[dry-run] crearía $previstos enlace(s) en $(carpeta_asistente "$asistente")"
-        done
         return 0
     fi
 
     if [ ! -d .agents/skills ]; then
         aviso "No hay .agents/skills todavía: no hay nada que enlazar"
         nota "Cuando agregues skills ahí, vuelve a correr Trawün."
+        return 0
+    fi
+
+    # Sin skills no se crea ni la carpeta del asistente. Una carpeta de enlaces
+    # vacía no sirve de nada, y encima haría que la próxima corrida creyera que
+    # el proyecto ya usa ese asistente (se detectan por su carpeta).
+    if [ "$(contar_skills .agents/skills)" = "0" ]; then
+        nota "Todavía no hay skills en .agents/skills: no hay nada que enlazar"
+        nota "Cuando agregues alguno, vuelve a correr Trawün."
         return 0
     fi
 
@@ -675,13 +752,14 @@ paso_enlaces() {
             aviso "$asistente: $copiados copia(s) en $destino (este sistema no permite enlaces)"
             nota "si cambias esos skills, vuelve a correr Trawün"
         fi
+        ENLACES_HECHOS=$((ENLACES_HECHOS + enlazados + copiados))
     done
 }
 
 paso_mcp() {
     [ "$HAY_MCP" = "si" ] || return 0
 
-    paso "6/6  Servidores MCP (.mcp.json)"
+    paso "Servidores MCP (.mcp.json)"
 
     nota "Qoder SÍ lee .mcp.json de este proyecto; DSH necesita un plugin aparte."
     nota "Cada servidor MCP suma sus herramientas a cada mensaje que envíes."
@@ -694,10 +772,10 @@ paso_mcp() {
 }
 
 paso_sembrar() {
-    paso "4/6  Lo que faltaba por crear"
+    paso "Lo que faltaba por crear"
 
     if [ "$DRY_RUN" = "si" ]; then
-        nota "[dry-run] crearía AGENTS.md y .agents/skills si faltan"
+        nota "[dry-run] crearía AGENTS.md, .agents/skills y .agents/LEEME.md si faltan"
         return 0
     fi
 
@@ -724,29 +802,31 @@ paso_sembrar() {
 
 ## Archivos para asistentes
 
-Los skills de este proyecto viven en `.agents/skills/`, y `.qoder/skills/` tiene
-enlaces a ellos. Los skills son de este proyecto y de ningún otro: no se instalan
-de forma global.
 MD
+        printf '%s\n' "$(frase_skills)" >> AGENTS.md
+        printf 'Los skills son de este proyecto y de ningún otro: no se instalan de\nforma global.\n' >> AGENTS.md
         ok "AGENTS.md creado (con secciones para completar)"
     fi
 
     if [ ! -d .agents/skills ]; then
         mkdir -p .agents/skills
-        cat > .agents/skills/LEEME.md <<'MD'
-# Skills de este proyecto
+        ok ".agents/skills/ creado"
+    fi
 
-Cada skill vive en su propia carpeta: `.agents/skills/<nombre>/SKILL.md`, con
-frontmatter YAML que incluya `name` y `description`.
-
-Los skills de este proyecto son de este proyecto. No se instalan de forma global:
-si los pusieras en tu carpeta de usuario, aparecerían en todos los demás
-proyectos tuyos, incluso donde no tienen nada que hacer.
-
-`.qoder/skills/` contiene enlaces a estas carpetas, para que Qoder los vea sin
-duplicar archivos.
-MD
-        ok ".agents/skills/ creado con un LEEME que explica la convención"
+    # El LEEME va fuera de .agents/skills a propósito: ahí dentro, cualquier .md
+    # suelto cuenta como skill de un solo archivo, y este no lo es (los
+    # asistentes avisan de que le falta el frontmatter en cada sesión).
+    if [ ! -f .agents/LEEME.md ]; then
+        {
+            printf '# Skills de este proyecto\n\n'
+            printf 'Cada skill vive en su propia carpeta: `.agents/skills/<nombre>/SKILL.md`, con\n'
+            printf 'frontmatter YAML que incluya `name` y `description`.\n\n'
+            printf 'Los skills de este proyecto son de este proyecto. No se instalan de forma\n'
+            printf 'global: si los pusieras en tu carpeta de usuario, aparecerían en todos los\n'
+            printf 'demás proyectos tuyos, incluso donde no tienen nada que hacer.\n\n'
+            printf '%s\n' "$(frase_skills)"
+        } > .agents/LEEME.md
+        ok ".agents/LEEME.md creado (explica la convención, fuera de la raíz de skills)"
     fi
 
     [ -f AGENTS.md ] && [ -d .agents/skills ] || return 0
@@ -782,6 +862,14 @@ verificar() {
     else
         for asistente in $ASISTENTES; do
             destino="$(carpeta_asistente "$asistente")"
+
+            # Sin skills no hay enlaces que revisar... salvo que hayan quedado
+            # enlaces viejos: esos sí, porque pueden estar rotos.
+            if [ "$esperados" = "0" ] && [ "$(contar_skills "$destino")" = "0" ]; then
+                nota "$asistente: todavía no hay skills, no hay enlaces que revisar"
+                continue
+            fi
+
             comprobar "$asistente: enlaces en $destino" "$(contar_skills "$destino")" "$esperados"
 
             rotos=0
@@ -821,11 +909,14 @@ resumen() {
     printf '  como corresponde: DSH, Codex, Cursor, Zed y compañía usan esas rutas\n'
     printf '  directamente.\n\n'
 
-    if [ -n "$ASISTENTES" ]; then
+    if [ -n "$ASISTENTES" ] && [ "$ENLACES_HECHOS" -gt 0 ]; then
         for asistente in $ASISTENTES; do
             printf '  Enlaces creados para %s%s%s en %s\n' "$TITULO" "$asistente" "$FIN" "$(carpeta_asistente "$asistente")"
         done
         printf '\n'
+    elif [ -n "$ASISTENTES" ]; then
+        printf '  Todavía no hay skills en .agents/skills, así que no creé enlaces.\n'
+        printf '  Cuando agregues alguno, vuelve a correr Trawün y los crea.\n\n'
     else
         printf '  No creé enlaces de asistente. Si usas Qoder o Copilot:\n'
         printf '    trawun --asistentes qoder,copilot\n\n'
@@ -836,8 +927,13 @@ resumen() {
         printf '  Si todo anda bien, borra esa carpeta.\n\n'
     fi
 
-    printf '  1. Revisa el diff:   git status && git diff\n'
-    printf '  2. Commitea:         git add -A && git commit -m "chore: convenciones de agentes"\n\n'
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        printf '  1. Revisa el diff:   git status && git diff\n'
+        printf '  2. Commitea:         git add -A && git commit -m "chore: convenciones de agentes"\n\n'
+    else
+        printf '  Este proyecto todavía no es un repositorio git. Si quieres versionarlo:\n'
+        printf '    git init && git add -A && git commit -m "chore: convenciones de agentes"\n\n'
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -936,6 +1032,7 @@ main() {
     PROYECTO="$(pwd)"
     detectar
     elegir_asistentes
+    prever_pasos
     mostrar_plan
 
     # La simulación no cambia nada, así que no pide confirmación.

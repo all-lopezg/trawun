@@ -30,6 +30,23 @@ existe()    { [ -e "$1" ]; comprobar "$2" "$?"; }
 no_existe() { [ ! -e "$1" ]; comprobar "$2" "$?"; }
 titulo()    { printf '\n%s\n' "$1"; }
 
+# Los pasos tienen que numerarse 1..N, todos con el mismo denominador. Un
+# proyecto sin CLAUDE.md ni Boost arrancaba en "3/6", como si dos pasos hubieran
+# fallado en silencio.
+pasos_bien_numerados() {
+    # $1 = salida del script, $2 = cantidad de pasos esperada
+    salida_revisada="$1"
+    esperados_pasos="$2"
+    cuantos_pasos="$(printf '%s\n' "$salida_revisada" | grep -c '==> ')"
+    numeros_paso="$(printf '%s\n' "$salida_revisada" | grep '==> ' | sed 's|.*==> \([0-9]*\)/.*|\1|' | tr '\n' ' ')"
+    denominadores="$(printf '%s\n' "$salida_revisada" | grep '==> ' | sed 's|.*==> [0-9]*/\([0-9]*\).*|\1|' | sort -u | tr '\n' ' ')"
+
+    [ "$cuantos_pasos" = "$esperados_pasos" ] || return 1
+    [ "$denominadores" = "$esperados_pasos " ] || return 1
+    [ "$numeros_paso" = "$(seq 1 "$esperados_pasos" | tr '\n' ' ')" ] || return 1
+    return 0
+}
+
 # Corre trawun sin que la detección de asistentes dependa de esta máquina:
 # HOME apunta a una carpeta vacía, así que no "ve" ningún asistente instalado.
 hogar_limpio() {
@@ -46,8 +63,10 @@ printf -- '---\nname: api-docs\ndescription: Prueba.\n---\n' > "$P/.claude/skill
 printf 'x\n' > "$P/.claude/commands/deploy.md"
 printf '{}\n' > "$P/.mcp.json"
 ( cd "$P" && git init -q . && git add -A && git commit -qm inicial )
-( cd "$P" && hogar_limpio -y --asistentes qoder . ) >/dev/null 2>&1
+salida="$( cd "$P" && hogar_limpio -y --asistentes qoder . 2>&1 )"
 comprobar "sale con código 0" "$?"
+comprobar "numera del 1 al 6 los pasos que corren" \
+    "$( pasos_bien_numerados "$salida" 6 && echo 0 || echo 1 )"
 existe    "$P/AGENTS.md" "las reglas quedaron en AGENTS.md"
 existe    "$P/.agents/skills/api-docs/SKILL.md" "el skill se movió a .agents/skills"
 existe    "$P/.qoder/skills/api-docs/SKILL.md" "Qoder ve el skill por el enlace"
@@ -72,14 +91,88 @@ no_existe "$P/.claude" ".claude/ se fue al respaldo"
 existe "$P/.agentes-respaldo" "el comando propio quedó respaldado"
 
 titulo "4. Proyecto vacío (modo sembrar)"
+
+# Un proyecto que no trae nada: solo tiene que sembrar, y la numeración tiene
+# que reflejar eso (ningún paso que no corre debe ocupar un número).
 P="$BASE/vacio"
 mkdir -p "$P"
 printf 'x\n' > "$P/README.md"
-( cd "$P" && hogar_limpio -y --asistentes qoder . ) >/dev/null 2>&1
+salida="$( cd "$P" && hogar_limpio -y --sin-enlaces . 2>&1 )"
 comprobar "sale con código 0" "$?"
-existe "$P/AGENTS.md" "creó un AGENTS.md para completar"
-existe "$P/.agents/skills" "creó .agents/skills"
-existe "$P/.qoder/skills" "creó .qoder/skills"
+existe    "$P/AGENTS.md" "creó un AGENTS.md para completar"
+existe    "$P/.agents/skills" "creó .agents/skills"
+no_existe "$P/.qoder" "no inventó enlaces que nadie pidió"
+comprobar "numera del 1 al 4 los pasos que corren" \
+    "$( pasos_bien_numerados "$salida" 4 && echo 0 || echo 1 )"
+
+# El LEEME de la convención va fuera de .agents/skills: ahí dentro cualquier .md
+# suelto se descubre como skill, y los asistentes avisan de que le falta el
+# frontmatter en cada sesión.
+existe    "$P/.agents/LEEME.md" "el LEEME que explica la convención está en .agents/"
+no_existe "$P/.agents/skills/LEEME.md" "no ensucia la raíz de skills"
+comprobar "el AGENTS.md sembrado no promete enlaces" \
+    "$( grep -q '\.qoder' "$P/AGENTS.md" && echo 1 || echo 0 )"
+
+# Sin skills no se crea la carpeta del asistente: además de quedar vacía, haría
+# que la próxima corrida creyera que el proyecto ya usa Qoder.
+P="$BASE/vacio-qoder"
+mkdir -p "$P"
+printf 'x\n' > "$P/README.md"
+salida="$( cd "$P" && hogar_limpio -y --asistentes qoder . 2>&1 )"
+comprobar "sale con código 0" "$?"
+no_existe "$P/.qoder/skills" "no deja una carpeta de enlaces vacía"
+comprobar "avisa que no hay nada que enlazar" \
+    "$( printf '%s' "$salida" | grep -q 'no hay nada que enlazar' && echo 0 || echo 1 )"
+comprobar "no promete enlaces en el AGENTS.md" \
+    "$( grep -q '\.qoder' "$P/AGENTS.md" && echo 1 || echo 0 )"
+comprobar "el resumen no dice que creó enlaces" \
+    "$( printf '%s' "$salida" | grep -q 'Enlaces creados para' && echo 1 || echo 0 )"
+comprobar "el plan tampoco anuncia enlaces que no va a crear" \
+    "$( printf '%s' "$salida" | grep -q 'Crear los enlaces' && echo 1 || echo 0 )"
+
+# Con skills y enlaces pedidos, los archivos sembrados sí dicen la verdad.
+P="$BASE/sembrar-con-skills"
+mkdir -p "$P/.claude/skills/api-docs"
+printf -- '---\nname: api-docs\ndescription: Prueba.\n---\n' > "$P/.claude/skills/api-docs/SKILL.md"
+salida="$( cd "$P" && hogar_limpio -y --asistentes qoder . 2>&1 )"
+comprobar "sale con código 0" "$?"
+comprobar "el plan anuncia los enlaces que sí va a crear" \
+    "$( printf '%s' "$salida" | grep -q 'Crear los enlaces de .qoder/skills' && echo 0 || echo 1 )"
+comprobar "el AGENTS.md menciona el enlace que sí existe" \
+    "$( grep -q '\.qoder/skills/' "$P/AGENTS.md" && echo 0 || echo 1 )"
+comprobar "el LEEME menciona el enlace que sí existe" \
+    "$( grep -q '\.qoder/skills/' "$P/.agents/LEEME.md" && echo 0 || echo 1 )"
+existe "$P/.qoder/skills/api-docs/SKILL.md" "y el enlace está de verdad"
+
+# Con dos asistentes, la frase tiene que nombrar las dos carpetas de enlaces.
+P="$BASE/sembrar-dos-asistentes"
+mkdir -p "$P/.claude/skills/api-docs"
+printf -- '---\nname: api-docs\ndescription: Prueba.\n---\n' > "$P/.claude/skills/api-docs/SKILL.md"
+( cd "$P" && hogar_limpio -y --asistentes qoder,copilot . ) >/dev/null 2>&1
+comprobar "sale con código 0" "$?"
+comprobar "el AGENTS.md nombra los dos enlaces" \
+    "$( grep -q '\.qoder/skills/`, `\.github/skills/' "$P/AGENTS.md" && echo 0 || echo 1 )"
+
+# Fuera de un repositorio git no se puede mandar a correr 'git status && git diff'.
+P="$BASE/sin-git"
+mkdir -p "$P"
+printf 'x\n' > "$P/README.md"
+salida="$( cd "$P" && hogar_limpio -y --sin-enlaces . 2>&1 )"
+comprobar "sin git no sugiere git status/git diff" \
+    "$( printf '%s' "$salida" | grep -q 'git status && git diff' && echo 1 || echo 0 )"
+comprobar "sin git explica cómo iniciarlo" \
+    "$( printf '%s' "$salida" | grep -q 'git init' && echo 0 || echo 1 )"
+
+# Enlaces viejos que se quedaron sin destino: la verificación tiene que verlos
+# aunque el proyecto ya no tenga skills, en vez de dar el paso por vacío.
+P="$BASE/enlaces-rotos"
+mkdir -p "$P/.agents/skills" "$P/.qoder/skills"
+ln -s ../../.agents/skills/fantasma "$P/.qoder/skills/fantasma"
+salida="$( cd "$P" && hogar_limpio -y --asistentes qoder . 2>&1 )"
+comprobar "sale con error si quedaron enlaces rotos" "$( [ "$?" = "1" ] && echo 0 || echo 1 )"
+comprobar "y lo reporta" \
+    "$( printf '%s' "$salida" | grep -qE 'enlace\(s\) roto\(s\)|esperaba 0' && echo 0 || echo 1 )"
+comprobar "sin inventar enlaces nuevos" "$( [ ! -e "$P/.qoder/skills/fantasma" ] && echo 0 || echo 1 )"
 
 titulo "5. Simulación (--dry-run) no toca nada"
 P="$BASE/simular"

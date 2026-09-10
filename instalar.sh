@@ -13,7 +13,7 @@
 #
 set -eu
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 REPO="all-lopezg/trawun"
 RAMIFICACION="main"
 

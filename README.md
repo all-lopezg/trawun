@@ -145,7 +145,8 @@ Dos detalles que evitan desastres silenciosos:
 5. **Mueve los skills** de `.claude/skills/` a `.agents/skills/`.
 6. **Redirige Laravel Boost** si está presente, para que escriba en las rutas neutrales
    y no vuelva a crear los archivos antiguos.
-7. **Crea los enlaces** de `.qoder/skills/` hacia `.agents/skills/`, sin duplicar archivos.
+7. **Crea los enlaces** de `.qoder/skills/` hacia `.agents/skills/`, sin duplicar archivos. Si
+   el proyecto todavía no tiene skills no deja carpetas vacías: los crea la próxima corrida.
 8. **Verifica** el resultado y sale con error si algo quedó a medias.
 
 Es idempotente: correrlo dos veces no rompe ni duplica nada. Y funciona igual en los tres
