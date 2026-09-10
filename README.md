@@ -34,6 +34,14 @@ bash trawun.sh
 
 Corre dentro de la carpeta del proyecto. No necesita instalación.
 
+Con `curl | bash` la entrada estándar es el propio script, así que para pasarle
+opciones hay que usar `bash -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | bash -s -- -n   # ver el plan
+curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | bash -s -- -y   # sin preguntas
+```
+
 ## Qué hace
 
 1. **Mira qué trae el proyecto**: `CLAUDE.md`, `.claude/`, `.mcp.json`, `AGENTS.md`,
