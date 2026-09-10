@@ -1,0 +1,648 @@
+#!/usr/bin/env bash
+#
+# Trawün — convenciones de agentes para tu proyecto
+#
+# Deja un proyecto listo para asistentes que NO son Claude Code: las reglas en
+# AGENTS.md y los skills en .agents/skills, con enlaces para Qoder.
+#
+# Uso:  bash trawun.sh [opciones] [ruta-del-proyecto]
+#
+# Este script trabaja SIEMPRE dentro del proyecto que le indiques. Nunca escribe
+# en tu carpeta de usuario ni instala nada de forma global.
+#
+set -eu
+
+VERSION="1.0.0"
+
+# ---------------------------------------------------------------------------
+# Presentación
+# ---------------------------------------------------------------------------
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    TITULO=$'\033[1;36m'; OK=$'\033[32m'; AVISO=$'\033[33m'
+    ERROR=$'\033[31m'; GRIS=$'\033[90m'; FIN=$'\033[0m'
+else
+    TITULO=""; OK=""; AVISO=""; ERROR=""; GRIS=""; FIN=""
+fi
+
+banner() {
+    printf '\n%s' "$TITULO"
+    cat <<'ARTE'
+  ████████╗██████╗  █████╗ ██╗    ██╗ ██╗   ██╗███╗   ██╗
+  ╚══██╔══╝██╔══██╗██╔══██╗██║    ██║ ██║   ██║████╗  ██║
+     ██║   ██████╔╝███████║██║ █╗ ██║ ██║   ██║██╔██╗ ██║
+     ██║   ██╔══██╗██╔══██║██║███╗██║ ██║   ██║██║╚██╗██║
+     ██║   ██║  ██║██║  ██║╚███╔███╔╝ ╚██████╔╝██║ ╚████║
+     ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝   ╚═════╝ ╚═╝  ╚═══╝
+ARTE
+    printf '%s' "$FIN"
+    printf '  %sTrawün%s · convenciones de agentes · v%s\n' "$GRIS" "$FIN" "$VERSION"
+}
+
+ayuda() {
+    banner
+    cat <<'AYUDA'
+
+  Prepara un proyecto para asistentes de IA que no son Claude Code:
+  deja las reglas en AGENTS.md y los skills en .agents/skills, y crea los
+  enlaces que Qoder necesita en .qoder/skills.
+
+  Qué hace, en orden:
+    1. Averigua qué trae el proyecto (CLAUDE.md, .claude/, .mcp.json, Boost…).
+    2. Te muestra el plan y te pide confirmación.
+    3. Respalda lo que va a mover en .agentes-respaldo/ (nada se destruye).
+    4. Mueve las reglas a AGENTS.md y los skills a .agents/skills.
+    5. Si el proyecto usa Laravel Boost, lo redirige para que no revuelva.
+    6. Crea los enlaces de .qoder/skills hacia .agents/skills.
+    7. Verifica el resultado y te dice qué quedó pendiente de tu mano.
+
+  Qué NO hace:
+    · No escribe fuera del proyecto (nunca toca tu carpeta de usuario).
+    · No instala skills de forma global.
+    · No borra nada: lo que sobra se mueve a .agentes-respaldo/.
+    · No hace commit: al final te muestra el diff y tú decides.
+    · No inventa reglas: respeta el contenido que ya tengas.
+
+  Uso:
+    bash trawun.sh [opciones] [ruta]
+
+  Opciones:
+    -n, --dry-run   Muestra qué haría, sin tocar un solo archivo.
+    -y, --si        Responde sí a todo. Útil para automatizar.
+    -h, --ayuda     Muestra esta ayuda.
+    -v, --version   Muestra la versión.
+
+  Ejemplos:
+    bash trawun.sh                      # adapta el proyecto actual
+    bash trawun.sh -n                   # solo muestra el plan
+    bash trawun.sh -y ~/mi-proyecto     # adapta sin preguntar
+AYUDA
+}
+
+ok()    { printf '     %s✓%s %s\n' "$OK" "$FIN" "$1"; }
+aviso() { printf '     %s!%s %s\n' "$AVISO" "$FIN" "$1"; }
+falla() { printf '     %s✗%s %s\n' "$ERROR" "$FIN" "$1"; }
+nota()  { printf '       %s%s%s\n' "$GRIS" "$1" "$FIN"; }
+paso()  { printf '\n%s==> %s%s\n' "$TITULO" "$1" "$FIN"; }
+
+# ---------------------------------------------------------------------------
+# Preguntas
+#
+# Con `curl | bash` la entrada estándar ES el script, así que leer de stdin
+# consumiría el propio código. Por eso se lee siempre de /dev/tty.
+# ---------------------------------------------------------------------------
+RESPUESTA_SI="no"
+
+hay_terminal() {
+    # ¿Podemos preguntarle al usuario? Se comprueba abriendo /dev/tty de verdad:
+    # el archivo puede existir y aun así no haber terminal (CI, contenedores).
+    { exec 3</dev/tty; } 2>/dev/null || return 1
+    exec 3<&-
+    return 0
+}
+
+preguntar() {
+    # $1 = pregunta, $2 = respuesta por defecto (s/n)
+    if [ "$RESPUESTA_SI" = "si" ]; then
+        return 0
+    fi
+
+    if ! hay_terminal; then
+        aviso "Sin terminal interactiva: uso la opción por defecto ($2)."
+        [ "$2" = "s" ] && return 0
+        return 1
+    fi
+
+    printf '     %s [s/n] ' "$1"
+    exec 3</dev/tty
+    read -r respuesta <&3 || respuesta=""
+    exec 3<&-
+
+    [ -z "$respuesta" ] && respuesta="$2"
+
+    case "$respuesta" in
+        s|S|si|SI|Si|y|Y|yes) return 0 ;;
+        no|n|N) return 1 ;;
+        *) [ "$2" = "s" ] && return 0; return 1 ;;
+    esac
+}
+
+confirmar_plan() {
+    if [ "$RESPUESTA_SI" = "si" ]; then
+        nota "Modo --si: se aplica el plan sin preguntar."
+        return 0
+    fi
+
+    if ! hay_terminal; then
+        printf '\n  %sNo hay terminal para pedirte confirmación, así que no toco nada.%s\n' "$AVISO" "$FIN"
+        printf '  Si de verdad quieres aplicarlo sin preguntas: vuelve a correrlo con --si\n\n'
+        exit 2
+    fi
+
+    if preguntar "¿Aplico estos cambios?" "s"; then
+        return 0
+    fi
+
+    printf '\n  %sCancelado. No se tocó nada.%s\n\n' "$AVISO" "$FIN"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Argumentos
+# ---------------------------------------------------------------------------
+DRY_RUN="no"
+RUTA=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -n|--dry-run) DRY_RUN="si" ;;
+        -y|--si)      RESPUESTA_SI="si" ;;
+        -h|--ayuda)   ayuda; exit 0 ;;
+        -v|--version) printf 'trawun %s\n' "$VERSION"; exit 0 ;;
+        -*)           printf '%sOpción desconocida: %s%s\n' "$ERROR" "$1" "$FIN" >&2; exit 2 ;;
+        *)            RUTA="$1" ;;
+    esac
+    shift
+done
+
+if [ -n "$RUTA" ]; then
+    if [ ! -d "$RUTA" ]; then
+        printf '%sNo existe la carpeta: %s%s\n' "$ERROR" "$RUTA" "$FIN" >&2
+        exit 2
+    fi
+    cd "$RUTA"
+fi
+
+PROYECTO="$(pwd)"
+
+# ---------------------------------------------------------------------------
+# Detección
+# ---------------------------------------------------------------------------
+HAY_CLAUDE_MD="no"; HAY_CLAUDE_DIR="no"; HAY_MCP="no"
+HAY_AGENTS_MD="no"; HAY_AGENTS_SKILLS="no"; HAY_QODER="no"; HAY_BOOST="no"
+
+detectar() {
+    [ -f CLAUDE.md ]       && HAY_CLAUDE_MD="si"
+    [ -d .claude ]         && HAY_CLAUDE_DIR="si"
+    [ -f .mcp.json ]       && HAY_MCP="si"
+    [ -f AGENTS.md ]       && HAY_AGENTS_MD="si"
+    [ -d .agents/skills ]  && HAY_AGENTS_SKILLS="si"
+    [ -d .qoder ]          && HAY_QODER="si"
+    [ -d vendor/laravel/boost ] && HAY_BOOST="si"
+    return 0
+}
+
+contar_skills() {
+    # Cuenta los skills en $1: carpetas reales y enlaces a carpetas.
+    # `find -type d` no sigue enlaces, por eso hay que mirarlos aparte.
+    if [ -d "$1" ]; then
+        find "$1" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | wc -l | tr -d ' '
+    else
+        echo "0"
+    fi
+}
+
+mostrar_plan() {
+    banner
+    printf '\n  Proyecto: %s%s%s\n' "$TITULO" "$PROYECTO" "$FIN"
+
+    printf '\n  %sEncontré esto:%s\n' "$TITULO" "$FIN"
+    if [ "$HAY_CLAUDE_MD" = "si" ]; then ok "CLAUDE.md (reglas para Claude Code)"; else nota "sin CLAUDE.md"; fi
+    if [ "$HAY_CLAUDE_DIR" = "si" ]; then ok ".claude/ ($(contar_skills .claude/skills) skills de Claude Code)"; else nota "sin .claude/"; fi
+    if [ "$HAY_MCP" = "si" ]; then ok ".mcp.json (servidores MCP)"; else nota "sin .mcp.json"; fi
+    if [ "$HAY_AGENTS_MD" = "si" ]; then ok "AGENTS.md (ya está en el nombre neutral)"; fi
+    if [ "$HAY_AGENTS_SKILLS" = "si" ]; then ok ".agents/skills ($(contar_skills .agents/skills) skills)"; fi
+    if [ "$HAY_BOOST" = "si" ]; then ok "Laravel Boost (genera guías y skills)"; fi
+
+    printf '\n  %sLo que voy a hacer:%s\n' "$TITULO" "$FIN"
+
+    if [ "$HAY_CLAUDE_MD" = "si" ] && [ "$HAY_AGENTS_MD" = "no" ]; then
+        ok "Mover CLAUDE.md  ->  AGENTS.md"
+    elif [ "$HAY_CLAUDE_MD" = "si" ] && [ "$HAY_AGENTS_MD" = "si" ]; then
+        aviso "Existen CLAUDE.md y AGENTS.md: los reviso pero NO los toco (hay que unirlos a mano)"
+    fi
+
+    if [ "$HAY_BOOST" = "si" ]; then
+        ok "Redirigir Boost a las rutas neutrales y apagar su MCP"
+    fi
+
+    if [ "$HAY_CLAUDE_DIR" = "si" ]; then
+        if [ "$HAY_BOOST" = "si" ]; then
+            ok "Respaldar .claude/ (Boost lo vuelve a generar en su sitio nuevo)"
+        else
+            ok "Mover los skills de .claude/skills  ->  .agents/skills"
+        fi
+    fi
+
+    ok "Crear los enlaces de .qoder/skills hacia .agents/skills"
+
+    if [ "$HAY_AGENTS_MD" = "no" ] && [ "$HAY_CLAUDE_MD" = "no" ]; then
+        ok "Crear un AGENTS.md inicial para que lo completes"
+    fi
+
+    if [ "$HAY_MCP" = "si" ]; then
+        aviso ".mcp.json: te pregunto aparte si lo conservo (Qoder sí lo lee)"
+    fi
+
+    nota "Nada se borra: lo que sobra va a .agentes-respaldo/"
+    nota "No escribo fuera de este proyecto ni instalo nada global."
+}
+
+# ---------------------------------------------------------------------------
+# Pasos
+# ---------------------------------------------------------------------------
+SELLO="$(date '+%Y%m%d-%H%M%S')"
+RESPALDO=".agentes-respaldo/$SELLO"
+RESPALDADOS=0
+
+respaldar() {
+    # $1 = ruta a mover, $2 = motivo
+    [ -e "$1" ] || return 0
+
+    if [ "$DRY_RUN" = "si" ]; then
+        nota "[dry-run] movería $1 a $RESPALDO/"
+        return 0
+    fi
+
+    mkdir -p "$RESPALDO"
+    if [ ! -f "$RESPALDO/LEEME.txt" ]; then
+        {
+            printf 'Respaldo hecho por Trawün el %s\n\n' "$SELLO"
+            printf 'Aquí está lo que el proyecto traía para Claude Code y que Trawün\n'
+            printf 'movió para dejar las rutas neutrales. Nada se borró.\n\n'
+            printf 'Para revertir: mueve estas carpetas a su lugar original.\n'
+            printf 'Si todo funciona bien, puedes borrar esta carpeta entera.\n'
+        } > "$RESPALDO/LEEME.txt"
+    fi
+
+    mv "$1" "$RESPALDO/"
+    RESPALDADOS=$((RESPALDADOS + 1))
+    ok "$1  ->  $RESPALDO/  ($2)"
+}
+
+paso_reglas() {
+    [ "$HAY_CLAUDE_MD" = "si" ] || return 0
+    [ "$HAY_AGENTS_MD" = "si" ] && return 0
+
+    paso "1/6  Reglas: CLAUDE.md -> AGENTS.md"
+
+    if [ "$DRY_RUN" = "si" ]; then
+        nota "[dry-run] renombraría CLAUDE.md a AGENTS.md"
+        return 0
+    fi
+
+    if git rev-parse --git-dir >/dev/null 2>&1 && [ -n "$(git ls-files -- CLAUDE.md 2>/dev/null)" ]; then
+        git mv CLAUDE.md AGENTS.md
+    else
+        mv CLAUDE.md AGENTS.md
+    fi
+    ok "AGENTS.md listo (mismo contenido, nombre que sí leen DSH y Qoder)"
+}
+
+paso_boost() {
+    [ "$HAY_BOOST" = "si" ] || return 0
+
+    paso "2/6  Laravel Boost: redirigir sus rutas"
+
+    if [ "$DRY_RUN" = "si" ]; then
+        nota "[dry-run] escribiría config/boost.php y pondría \"mcp\": false en boost.json"
+        nota "[dry-run] correría: php artisan boost:update"
+        return 0
+    fi
+
+    if [ -f config/boost.php ]; then
+        aviso "config/boost.php ya existe: no lo toco, revísalo a mano"
+    else
+        mkdir -p config
+        cat > config/boost.php <<'PHP'
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| Configuración de Laravel Boost
+|--------------------------------------------------------------------------
+|
+| Boost escribe las guías para asistentes y los skills de desarrollo. Por
+| defecto los deja en las rutas propias de Claude Code (`CLAUDE.md` y
+| `.claude/skills`); este proyecto usa las rutas neutrales que entienden la
+| mayoría de los asistentes (DSH, Qoder, Codex, Cursor, Amp, Zed, OpenCode):
+| `AGENTS.md` y `.agents/skills`.
+|
+| Boost no trae un agente "neutral", así que se conserva `claude_code` en
+| boost.json y se le redirigen las rutas aquí. Configurarlo (en vez de
+| renombrar los archivos a mano) es lo que evita que `composer update` — que
+| dispara `boost:update` — vuelva a crear los archivos antiguos y deje las
+| guías duplicadas.
+|
+*/
+
+return [
+    'agents' => [
+        'claude_code' => [
+            'guidelines_path' => 'AGENTS.md',
+            'skills_path' => '.agents/skills',
+        ],
+    ],
+];
+PHP
+        ok "config/boost.php creado"
+    fi
+
+    if [ -f boost.json ]; then
+        php -r '
+$ruta = "boost.json";
+$datos = json_decode((string) file_get_contents($ruta), true);
+if (! is_array($datos)) { fwrite(STDERR, "boost.json no es JSON valido\n"); exit(1); }
+$datos["mcp"] = false;
+file_put_contents($ruta, json_encode($datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
+' && ok "boost.json: MCP apagado (nada de herramientas fantasma en las guías)"
+    fi
+
+    respaldar ".claude" "Boost lo regenera en .agents/skills"
+
+    if php artisan boost:update --no-interaction >/dev/null 2>&1; then
+        ok "boost:update corrido: guías y skills reescritos en las rutas nuevas"
+    else
+        aviso "boost:update falló; córrelo a mano: php artisan boost:update"
+    fi
+}
+
+paso_skills() {
+    [ "$HAY_CLAUDE_DIR" = "si" ] || return 0
+    [ "$HAY_BOOST" = "si" ] && return 0   # Boost ya los regeneró; .claude fue al respaldo
+
+    paso "3/6  Skills y configuración de Claude Code"
+
+    if [ "$DRY_RUN" = "si" ]; then
+        if [ -d .claude/skills ]; then
+            nota "[dry-run] movería $(contar_skills .claude/skills) skill(s) a .agents/skills"
+        fi
+        nota "[dry-run] movería .claude/ a .agentes-respaldo/"
+        return 0
+    fi
+
+    if [ -d .claude/skills ]; then
+        mkdir -p .agents/skills
+        for origen in .claude/skills/*/; do
+            [ -d "$origen" ] || continue
+            nombre="$(basename "$origen")"
+            if [ -e ".agents/skills/$nombre" ]; then
+                aviso "$nombre ya existe en .agents/skills: no lo piso"
+            else
+                mv "$origen" ".agents/skills/$nombre"
+                ok "$nombre"
+            fi
+        done
+    else
+        aviso ".claude/ no tiene skills que mover"
+    fi
+
+    # Todo lo demás dentro de .claude (comandos, agentes propios) también es
+    # configuración de Claude Code, así que va al respaldo. Se nombra antes para
+    # que no sea una sorpresa, y queda recuperable con su LEEME.
+    quedan="$(find .claude -mindepth 1 -maxdepth 1 ! -name skills 2>/dev/null | sed 's|^\.claude/||' | tr '\n' ' ')"
+    if [ -n "$quedan" ]; then
+        aviso "además va al respaldo, y no son skills: $quedan"
+        nota "si te sirven, rescátalos desde .agentes-respaldo/ (Qoder tiene su propio"
+        nota "mecanismo de comandos y de agentes, pero no los convierto automáticamente)"
+    fi
+
+    respaldar ".claude" "configuración de Claude Code"
+}
+
+paso_enlaces() {
+    paso "5/6  Enlaces de Qoder"
+
+    if [ "$DRY_RUN" = "si" ]; then
+        # En simulación .agents/skills puede no existir aún: se cuenta lo que
+        # quedaría ahí después de mover los skills de .claude.
+        previstos="$(contar_skills .agents/skills)"
+        if [ "$previstos" = "0" ]; then
+            previstos="$(contar_skills .claude/skills)"
+        fi
+        nota "[dry-run] crearía $previstos enlaces en .qoder/skills"
+        return 0
+    fi
+
+    if [ ! -d .agents/skills ]; then
+        aviso "No hay .agents/skills todavía: no hay nada que enlazar"
+        nota "Cuando agregues skills ahí, vuelve a correr Trawün."
+        return 0
+    fi
+
+    mkdir -p .qoder/skills
+    enlazados=0
+    copiados=0
+    for origen in .agents/skills/*/; do
+        [ -d "$origen" ] || continue
+        nombre="$(basename "$origen")"
+        if [ -e ".qoder/skills/$nombre" ] && [ ! -L ".qoder/skills/$nombre" ]; then
+            aviso "$nombre ya existe en .qoder/skills como carpeta real: no lo toco"
+            continue
+        fi
+
+        ln -sfn "../../.agents/skills/$nombre" ".qoder/skills/$nombre" 2>/dev/null || true
+
+        if [ -e ".qoder/skills/$nombre" ]; then
+            enlazados=$((enlazados + 1))
+        else
+            # Hay sistemas que no permiten enlaces (Windows sin permisos, algunos
+            # sistemas de archivos). Ahí se copia: ocupa más y hay que volver a
+            # correr Trawün si el skill cambia, pero Qoder lo ve igual.
+            rm -rf ".qoder/skills/$nombre"
+            cp -R ".agents/skills/$nombre" ".qoder/skills/$nombre"
+            copiados=$((copiados + 1))
+        fi
+    done
+
+    if [ "$enlazados" -gt 0 ]; then
+        ok "$enlazados enlace(s): una sola copia real de cada skill"
+    fi
+    if [ "$copiados" -gt 0 ]; then
+        aviso "$copiados copia(s): este sistema no permite enlaces"
+        nota "si cambias esos skills, vuelve a correr Trawün"
+    fi
+}
+
+paso_mcp() {
+    [ "$HAY_MCP" = "si" ] || return 0
+
+    paso "6/6  Servidores MCP (.mcp.json)"
+
+    nota "Qoder SÍ lee .mcp.json de este proyecto; DSH necesita un plugin aparte."
+    nota "Cada servidor MCP suma sus herramientas a cada mensaje que envíes."
+
+    if preguntar "¿Conservo .mcp.json?" "s"; then
+        ok "Se conserva: revisa que los servidores que declara sean los que quieres"
+    else
+        respaldar ".mcp.json" "no lo quieres usar por ahora"
+    fi
+}
+
+paso_sembrar() {
+    paso "4/6  Lo que faltaba por crear"
+
+    if [ "$DRY_RUN" = "si" ]; then
+        nota "[dry-run] crearía AGENTS.md y .agents/skills si faltan"
+        return 0
+    fi
+
+    if [ ! -f AGENTS.md ]; then
+        cat > AGENTS.md <<'MD'
+# Reglas del proyecto
+
+> Este archivo lo leen los asistentes de IA (DSH, Qoder, Codex, Cursor, Zed…).
+> Trawün lo creó vacío a propósito: escríbelo tú, con las reglas reales del
+> proyecto. Un archivo corto y concreto rinde más que uno largo y genérico.
+
+## Qué es este proyecto
+
+(Pendiente: una o dos frases.)
+
+## Cómo se trabaja aquí
+
+- (Pendiente: comandos que se corren antes de dar algo por terminado.)
+- (Pendiente: convenciones de nombres, idioma, formato.)
+
+## Trampas conocidas
+
+- (Pendiente: lo que ya te costó tiempo una vez.)
+
+## Archivos para asistentes
+
+Los skills de este proyecto viven en `.agents/skills/`, y `.qoder/skills/` tiene
+enlaces a ellos. Los skills son de este proyecto y de ningún otro: no se instalan
+de forma global.
+MD
+        ok "AGENTS.md creado (con secciones para completar)"
+    fi
+
+    if [ ! -d .agents/skills ]; then
+        mkdir -p .agents/skills
+        cat > .agents/skills/LEEME.md <<'MD'
+# Skills de este proyecto
+
+Cada skill vive en su propia carpeta: `.agents/skills/<nombre>/SKILL.md`, con
+frontmatter YAML que incluya `name` y `description`.
+
+Los skills de este proyecto son de este proyecto. No se instalan de forma global:
+si los pusieras en tu carpeta de usuario, aparecerían en todos los demás
+proyectos tuyos, incluso donde no tienen nada que hacer.
+
+`.qoder/skills/` contiene enlaces a estas carpetas, para que Qoder los vea sin
+duplicar archivos.
+MD
+        ok ".agents/skills/ creado con un LEEME que explica la convención"
+    fi
+
+    [ -f AGENTS.md ] && [ -d .agents/skills ] || return 0
+}
+
+# ---------------------------------------------------------------------------
+# Verificación
+# ---------------------------------------------------------------------------
+FALLOS=0
+
+comprobar() {
+    # $1 = descripción, $2 = valor, $3 = esperado
+    if [ "$2" = "$3" ]; then
+        ok "$1: $2"
+    else
+        falla "$1: $2 (esperaba $3)"
+        FALLOS=$((FALLOS + 1))
+    fi
+}
+
+verificar() {
+    paso "Verificación"
+
+    comprobar "AGENTS.md" "$([ -f AGENTS.md ] && echo presente || echo ausente)" "presente"
+    comprobar ".agents/skills" "$([ -d .agents/skills ] && echo presente || echo ausente)" "presente"
+    comprobar "CLAUDE.md" "$([ -f CLAUDE.md ] && echo presente || echo ausente)" "ausente"
+    comprobar ".claude/" "$([ -d .claude ] && echo presente || echo ausente)" "ausente"
+
+    esperados="$(contar_skills .agents/skills)"
+    enlaces="$(contar_skills .qoder/skills)"
+    comprobar "enlaces en .qoder/skills" "$enlaces" "$esperados"
+
+    rotos=0
+    for enlace in .qoder/skills/*; do
+        # Se recorren todos los elementos (no solo directorios) porque un enlace
+        # quebrado deja de ser un directorio y hay que detectarlo igual.
+        [ -L "$enlace" ] || continue
+        [ -e "$enlace" ] || rotos=$((rotos + 1))
+    done
+    if [ "$rotos" -gt 0 ]; then
+        falla "$rotos enlace(s) roto(s) en .qoder/skills"
+        FALLOS=$((FALLOS + 1))
+    else
+        ok "enlaces de Qoder: todos resuelven"
+    fi
+}
+
+resumen() {
+    printf '\n%s────────────────────────────────────────────────────────────%s\n' "$GRIS" "$FIN"
+
+    if [ "$FALLOS" -gt 0 ]; then
+        printf '\n  %sQuedaron %s problema(s). Revisa arriba.%s\n\n' "$ERROR" "$FALLOS" "$FIN"
+        exit 1
+    fi
+
+    if [ "$DRY_RUN" = "si" ]; then
+        printf '\n  %sSimulación terminada. No se tocó nada.%s\n' "$OK" "$FIN"
+        printf '  Corre sin --dry-run para aplicarlo.\n\n'
+        exit 0
+    fi
+
+    printf '\n  %sListo.%s\n\n' "$OK" "$FIN"
+    printf '  Los asistentes que leen AGENTS.md y .agents/skills ya ven este proyecto\n'
+    printf '  como corresponde: DSH de forma nativa, Qoder con los enlaces de .qoder.\n\n'
+
+    if [ "$RESPALDADOS" -gt 0 ]; then
+        printf '  %sRespaldé %s cosa(s) en %s/%s\n' "$AVISO" "$RESPALDADOS" "$RESPALDO" "$FIN"
+        printf '  Si todo anda bien, borra esa carpeta.\n\n'
+    fi
+
+    if [ -d .claude ]; then
+        printf '  %sQueda contenido en .claude/ que no son skills y no toqué:%s\n' "$AVISO" "$FIN"
+        find .claude -mindepth 1 -maxdepth 1 ! -name skills 2>/dev/null | sed 's/^/    /'
+        printf '  Revísalo: comandos o agentes propios pueden tener equivalente en\n'
+        printf '  Qoder (.qoder/agents/) o simplemente no aplicar.\n\n'
+    fi
+
+    printf '  1. Revisa el diff:   git status && git diff\n'
+    printf '  2. Commitea:         git add -A && git commit -m "chore: convenciones de agentes"\n\n'
+}
+
+# ---------------------------------------------------------------------------
+main() {
+    detectar
+    mostrar_plan
+
+    # La simulación no cambia nada, así que no pide confirmación.
+    if [ "$DRY_RUN" != "si" ]; then
+        confirmar_plan
+    fi
+
+    if [ "$DRY_RUN" = "si" ]; then
+        printf '\n%s── modo dry-run: no se toca ningún archivo ──%s\n' "$AVISO" "$FIN"
+    fi
+
+    paso_reglas
+    paso_boost
+    paso_skills
+    paso_sembrar
+    paso_enlaces
+    paso_mcp
+
+    if [ "$DRY_RUN" = "si" ]; then
+        paso "Verificación"
+        nota "[dry-run] no hay nada que verificar"
+        printf '\n  %sSimulación terminada. No se tocó nada.%s\n\n' "$OK" "$FIN"
+        exit 0
+    fi
+
+    verificar
+    resumen
+}
+
+main
