@@ -6,6 +6,9 @@
 cualquier proyecto listo para los asistentes que leen el estándar neutral — `AGENTS.md`
 y `.agents/skills/` — y crea los enlaces que **Qoder** necesita en `.qoder/skills/`.
 
+Habla español e inglés: la primera vez te pregunta en cuál, y después se elige con
+`--idioma en` o con `export TRAWUN_IDIOMA=en`.
+
 ## Úsalo
 
 ```bash
@@ -87,6 +90,26 @@ trawun
 
 **¿Y si eres un equipo?** Descarguen `trawun.sh` al repositorio y commitéenlo. Así
 cualquiera lo corre sin depender de internet y queda versionado junto al proyecto.
+
+## Idioma
+
+Trawün habla español e inglés, y el idioma se elige así, en este orden:
+
+1. `--idioma es|en` (o `--language`) para esa corrida.
+2. `TRAWUN_IDIOMA`, que puedes exportar en tu perfil y olvidarte.
+3. Si no hay ninguna de las dos y hay terminal, **te pregunta**, con el idioma de tu
+   sistema como opción por defecto.
+4. Sin terminal (CI, scripts), el idioma del sistema.
+
+```bash
+trawun --idioma en              # esta corrida, en inglés
+export TRAWUN_IDIOMA=es         # esta terminal (y las que abra) en español
+bash instalar.sh --language en  # el instalador, en inglés
+```
+
+Vale para todo lo que Trawün imprime y también para lo que escribe dentro del proyecto:
+el `AGENTS.md` inicial, el `.agents/README.md`, el `README.txt` del respaldo y la
+configuración de Boost salen en el idioma elegido, no en el del script.
 
 ## Para qué asistentes
 
@@ -172,15 +195,20 @@ tu-proyecto/
 |---|---|
 | `-n`, `--dry-run` | Muestra qué haría, sin tocar un solo archivo |
 | `-y`, `--si` | Responde sí a todo (para automatizar) |
+| `-l`, `--idioma <es\|en>` | En qué idioma habla (también `TRAWUN_IDIOMA`) |
 | `--asistentes <lista>` | Para qué asistentes crear enlaces: `qoder`, `copilot` |
 | `--sin-enlaces` | No crear enlaces de ningún asistente |
 | `-h`, `--ayuda` | Muestra la ayuda |
 | `-v`, `--version` | Muestra la versión |
 
+Las opciones también tienen su nombre en inglés: `--language`, `--yes`, `--assistants`,
+`--no-links` y `--help`.
+
 ```bash
 trawun -n                       # simular sobre el proyecto actual
 trawun ~/mi-proyecto            # adaptar otra carpeta
 trawun -y                       # sin preguntas
+trawun --idioma en              # en inglés
 trawun --asistentes qoder       # enlaces solo para Qoder
 trawun y cargo new gestor       # crear el proyecto y adaptarlo
 ```
@@ -247,10 +275,15 @@ cd your-project
 curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | bash
 ```
 
+It speaks Spanish and English: it asks you once, and after that you can pin it with
+`--language en` or `export TRAWUN_IDIOMA=en`. Everything it prints and everything it
+writes into the project (the starter `AGENTS.md`, the `.agents/README.md`, the backup
+README and the Boost config) comes out in the language you chose.
+
 It can also create the project for you: `trawun y cargo new gestor` runs your command, finds
 the new folder, and adapts it. Install it as a command with `instalar.sh`, or run `--dry-run`
 to see the plan first. Only assistants with their own skills folder need symlinks (Qoder,
-Copilot); DSH, Codex, Cursor, Zed and friends read `.agents/skills/` directly.
+Copilot); the rest read `.agents/skills/` directly.
 It never writes outside the project, never installs skills globally, never deletes
 anything (it moves it to `.agentes-respaldo/`), and never commits. Works with bash 3.2+
 (including macOS's ancient bash).

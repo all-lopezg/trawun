@@ -8,6 +8,7 @@
 set -u
 
 TRAWUN="$(cd "$(dirname "$0")" && pwd)/trawun.sh"
+REPO="$(cd "$(dirname "$0")" && pwd)"
 BASE="$(mktemp -d)"
 FALLOS=0
 
@@ -47,11 +48,36 @@ pasos_bien_numerados() {
     return 0
 }
 
-# Corre trawun sin que la detección de asistentes dependa de esta máquina:
-# HOME apunta a una carpeta vacía, así que no "ve" ningún asistente instalado.
+# Corre trawun sin que la detección de asistentes ni el idioma dependan de esta
+# máquina: HOME apunta a una carpeta vacía, así que no "ve" ningún asistente
+# instalado, y el idioma queda fijado, que si no lo decide el locale de quien
+# corre las pruebas.
 hogar_limpio() {
     mkdir -p "$BASE/hogar"
-    HOME="$BASE/hogar" bash "$TRAWUN" "$@"
+    HOME="$BASE/hogar" TRAWUN_IDIOMA=es bash "$TRAWUN" "$@"
+}
+
+hogar_ingles() {
+    mkdir -p "$BASE/hogar"
+    HOME="$BASE/hogar" TRAWUN_IDIOMA=en bash "$TRAWUN" "$@"
+}
+
+# Cada idioma es un catálogo con las mismas claves (mensaje_es y mensaje_en). Una
+# traducción olvidada no rompe nada: solo imprime "FALTA TEXTO" en medio de la
+# salida, así que se comparan las claves y se revisa que ninguna llamada pida
+# una clave que no exista. Vale para los dos scripts que ve el usuario.
+claves_catalogo() {
+    # $1 = script, $2 = idioma
+    sed -n "/^mensaje_$2() {/,/^}/p" "$REPO/$1" | grep -oE '^        [a-z0-9_]+\)' | tr -d ' )' | sort
+}
+
+claves_usadas() {
+    # $1 = script. Sin las líneas de comentario: ahí "decir"/"paso" son prosa.
+    # `preguntar` también recibe una clave. Las de motivo_* no se pueden revisar
+    # así: `respaldar` las pasa como segundo argumento.
+    grep -vE '^[[:space:]]*#' "$REPO/$1" \
+        | grep -oE '(decir|ok|aviso|falla|nota|paso|preguntar) [a-z0-9_]+' \
+        | awk '{print $2}' | sort -u
 }
 
 # ---------------------------------------------------------------------------
@@ -352,8 +378,6 @@ comprobar "el enlace sigue siendo enlace" "$( [ -L "$P/.qoder/skills/insforge" ]
 
 titulo "16. Coherencia del propio repositorio"
 
-REPO="$(cd "$(dirname "$0")" && pwd)"
-
 version_trawun="$(grep -m1 '^VERSION=' "$REPO/trawun.sh" | cut -d'"' -f2)"
 version_instalador="$(grep -m1 '^VERSION=' "$REPO/instalar.sh" | cut -d'"' -f2)"
 
@@ -383,6 +407,112 @@ fi
 
 # El bit de ejecución se pierde fácil y rompe el uso más obvio: ./trawun.sh
 comprobar "trawun.sh tiene permiso de ejecución" "$( [ -x "$REPO/trawun.sh" ] && echo 0 || echo 1 )"
+
+# Los catálogos de idioma tienen que ir parejos: una clave sin traducir no rompe
+# nada, solo deja "FALTA TEXTO" en medio de la salida del usuario.
+for script in trawun.sh instalar.sh; do
+    claves_es="$(claves_catalogo "$script" es)"
+    claves_en="$(claves_catalogo "$script" en)"
+
+    comprobar "$script: los catálogos es y en tienen las mismas claves" \
+        "$( [ -n "$claves_es" ] && [ "$claves_es" = "$claves_en" ] && echo 0 || echo 1 )"
+
+    sin_texto="$(comm -23 <(claves_usadas "$script") <(printf '%s\n' "$claves_es"))"
+    comprobar "$script: no hay llamadas a claves que no existan" \
+        "$( [ -z "$sin_texto" ] && echo 0 || echo 1 )"
+    if [ -n "$sin_texto" ]; then
+        printf '%s\n' "$sin_texto" | sed 's/^/       /'
+    fi
+done
+
+# ---------------------------------------------------------------------------
+titulo "17. Idioma: se elige, se deduce y no se mezcla"
+
+# Se usa la variable TRAWUN_IDIOMA en casi todas las pruebas para que la corrida
+# no dependa del locale de quien las corre; acá se prueban las otras formas.
+P="$BASE/idioma"
+mkdir -p "$P/.claude/skills/api-docs"
+printf -- '---\nname: api-docs\n---\n' > "$P/.claude/skills/api-docs/SKILL.md"
+
+salida="$( cd "$P" && hogar_ingles -y --assistants qoder . 2>&1 )"
+comprobar "sale con código 0 en inglés" "$?"
+comprobar "la salida queda en inglés" \
+    "$( printf '%s' "$salida" | grep -q 'Assistant links' && echo 0 || echo 1 )"
+comprobar "y no mezcla los dos idiomas" \
+    "$( printf '%s' "$salida" | grep -q 'Enlaces de asistentes' && echo 1 || echo 0 )"
+comprobar "las opciones tienen su nombre en inglés (--assistants, --yes)" \
+    "$( printf '%s' "$salida" | grep -q 'qoder: 1 link(s)' && echo 0 || echo 1 )"
+comprobar "el AGENTS.md sembrado sale en el idioma elegido" \
+    "$( grep -q '^## Files for assistants' "$P/AGENTS.md" && echo 0 || echo 1 )"
+comprobar "y el README de los skills también" \
+    "$( grep -q '^# Skills for this project' "$P/.agents/README.md" && echo 0 || echo 1 )"
+comprobar "la ayuda sale en el idioma elegido" \
+    "$( cd "$P" && hogar_ingles --help 2>&1 | grep -q 'What it does, in order' && echo 0 || echo 1 )"
+comprobar "y en español cuando se pide en español" \
+    "$( cd "$P" && hogar_limpio --help 2>&1 | grep -q 'Qué hace, en orden' && echo 0 || echo 1 )"
+
+# Lo elegido a mano manda sobre el idioma de la máquina, siempre.
+comprobar "--idioma manda sobre el idioma del sistema" \
+    "$( cd "$P" && HOME="$BASE/hogar" LANG=en_US.UTF-8 bash "$TRAWUN" -y --idioma es --sin-enlaces . 2>&1 \
+        | grep -q 'Lo que voy a hacer' && echo 0 || echo 1 )"
+comprobar "TRAWUN_IDIOMA también manda sobre el sistema" \
+    "$( cd "$P" && HOME="$BASE/hogar" LANG=es_AR.UTF-8 TRAWUN_IDIOMA=en bash "$TRAWUN" -y --no-links . 2>&1 \
+        | grep -q 'What I am going to do' && echo 0 || echo 1 )"
+
+# Sin bandera ni variable decide el idioma de la máquina.
+comprobar "sin elegir nada, se usa el idioma del sistema" \
+    "$( cd "$P" && HOME="$BASE/hogar" LANG=en_US.UTF-8 bash "$TRAWUN" -y --no-links . 2>&1 \
+        | grep -q 'What I am going to do' && echo 0 || echo 1 )"
+
+# Un idioma que no existe se rechaza en vez de seguir en otro idioma a escondidas.
+( cd "$P" && hogar_limpio -y --idioma pt . ) >/dev/null 2>&1
+comprobar "rechaza un idioma desconocido con código 2" "$( [ "$?" = "2" ] && echo 0 || echo 1 )"
+
+( cd "$P" && hogar_limpio -y --idioma ) >/dev/null 2>&1
+comprobar "y rechaza --idioma sin su valor" "$( [ "$?" = "2" ] && echo 0 || echo 1 )"
+
+# Ninguna clave puede quedarse sin texto: el catálogo lo avisa por stderr y esa
+# línea no puede llegarle al usuario que corre una corrida normal.
+salida="$( cd "$P" && hogar_ingles -y --assistants copilot . 2>&1 )"
+comprobar "en una corrida en inglés no falta ningún texto" \
+    "$( printf '%s' "$salida" | grep -q 'MISSING TEXT\|FALTA TEXTO' && echo 1 || echo 0 )"
+
+# El cierre nombra asistentes como ejemplo, no como la lista de los que sirven.
+comprobar "el cierre habla del estándar neutral" \
+    "$( printf '%s' "$salida" | grep -q 'neutral standard' && echo 0 || echo 1 )"
+comprobar "y los asistentes quedan como ejemplo (among others)" \
+    "$( printf '%s' "$salida" | grep -q 'among others' && echo 0 || echo 1 )"
+salida="$( cd "$P" && hogar_limpio -y --sin-enlaces . 2>&1 )"
+comprobar "el cierre en español también es general" \
+    "$( printf '%s' "$salida" | grep -q 'estándar neutral' && echo 0 || echo 1 )"
+comprobar "y deja los nombres como ejemplo (entre otros)" \
+    "$( printf '%s' "$salida" | grep -q 'entre otros' && echo 0 || echo 1 )"
+
+# ---------------------------------------------------------------------------
+titulo "18. Instalador: elige idioma y no toca nada fuera de su carpeta"
+
+INSTALADOR="$REPO/instalar.sh"
+
+# Nunca se apunta al HOME de verdad: el perfil y la carpeta de instalación viven
+# en la carpeta temporal de las pruebas.
+salida="$( HOME="$BASE/hogar" TRAWUN_IDIOMA=en bash "$INSTALADOR" \
+    --dir "$BASE/bin-ingles" --no-profile 2>&1 )"
+comprobar "sale con código 0 en inglés" "$?"
+comprobar "la ayuda del instalador sale en inglés" \
+    "$( TRAWUN_IDIOMA=en bash "$INSTALADOR" --help 2>&1 | grep -q 'What it does' && echo 0 || echo 1 )"
+comprobar "y en español cuando se pide en español" \
+    "$( TRAWUN_IDIOMA=es bash "$INSTALADOR" --help 2>&1 | grep -q 'Qué hace' && echo 0 || echo 1 )"
+comprobar "el instalador habla inglés" \
+    "$( printf '%s' "$salida" | grep -q 'Done.' && echo 0 || echo 1 )"
+comprobar "y deja el comando instalado" \
+    "$( [ -x "$BASE/bin-ingles/trawun" ] && echo 0 || echo 1 )"
+comprobar "no escribió ningún perfil" \
+    "$( [ ! -e "$BASE/hogar/.zshrc" ] && [ ! -e "$BASE/hogar/.bashrc" ] && echo 0 || echo 1 )"
+
+( HOME="$BASE/hogar" TRAWUN_IDIOMA=es bash "$INSTALADOR" \
+    --dir "$BASE/bin-malo" --sin-perfil --idioma pt ) >/dev/null 2>&1
+comprobar "rechaza un idioma desconocido con código 2" "$( [ "$?" = "2" ] && echo 0 || echo 1 )"
+no_existe "$BASE/bin-malo" "y no instala nada cuando el idioma no existe"
 
 # ---------------------------------------------------------------------------
 printf '\n────────────────────────────────────────────\n'

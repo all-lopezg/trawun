@@ -26,6 +26,26 @@ Con `curl | bash` la entrada estándar **es el script**, así que todo lo que le
 usuario tiene que leer de `/dev/tty`, nunca de stdin. Vale para las confirmaciones y para
 los comandos de creación del modo `trawun y`.
 
+## Idioma
+
+`trawun.sh` e `instalar.sh` hablan español e inglés. Todo texto que ve el usuario vive en
+dos catálogos con las mismas claves —`mensaje_es` y `mensaje_en`, al final de cada
+script— y se pide con `decir <clave> [datos]`. Los ayudantes `ok`, `aviso`, `falla`,
+`nota` y `paso` reciben la clave, no el texto. Lo que ocupa varias líneas (la ayuda y los
+archivos que se siembran) va en funciones `plantilla_*`, una por idioma.
+
+Agregar un idioma es escribir otro catálogo y sus plantillas. Dos pruebas lo cuidan: que
+los catálogos tengan exactamente las mismas claves y que ninguna llamada pida una clave
+inexistente. Los comentarios e identificadores siguen en español, como el resto del
+código.
+
+El idioma se resuelve en este orden: `--idioma`, `TRAWUN_IDIOMA`, la pregunta al empezar
+(solo si hay terminal) y el idioma del sistema. **No se guarda en ningún lado**: Trawün no
+escribe fuera del proyecto, así que no hay configuración global que recordar; por eso las
+pruebas fijan `TRAWUN_IDIOMA` en vez de depender del locale de quien las corre. Ojo con
+los `printf`: una plantilla que empiece con `-` se come el formato como si fuera una
+opción.
+
 ## Decisiones ya tomadas (no las "arregles")
 
 - **Cursor no está en la tabla de asistentes**: su documentación dice que lee
@@ -60,6 +80,7 @@ actualizando, y un tag de más ensucia el historial.
 
 ## Estilo
 
-Español en identificadores, comentarios y mensajes; sin tildes ni ñ en nombres de variables
-y funciones. Los comentarios explican **por qué**, no qué: el código ya dice qué hace. Las
-pruebas se escriben sobre carpetas temporales, nunca sobre un proyecto real.
+Español en identificadores y comentarios (los mensajes del usuario viven en los catálogos,
+ver *Idioma*); sin tildes ni ñ en nombres de variables y funciones. Los comentarios
+explican **por qué**, no qué: el código ya dice qué hace. Las pruebas se escriben sobre
+carpetas temporales, nunca sobre un proyecto real.

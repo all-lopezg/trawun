@@ -1,5 +1,26 @@
 # Cambios
 
+## v1.3.0
+
+- **Trawün habla español e inglés.** El idioma se elige con `--idioma es|en` (o
+  `--language`), con la variable `TRAWUN_IDIOMA`, o se pregunta al empezar, con el idioma
+  del sistema como opción por defecto; sin terminal (CI, scripts) se deduce del sistema y
+  listo. Vale para `trawun.sh` y para `instalar.sh`, y también para lo que Trawün escribe
+  dentro del proyecto: el `AGENTS.md` que siembra, el `.agents/README.md`, el `README.txt`
+  del respaldo y la configuración de Boost salen en el idioma elegido.
+- **El cierre dejó de sonar a aviso publicitario.** Decía que "DSH, Codex, Cursor, Zed y
+  compañía" leían las rutas neutrales, como si fueran la lista completa. Ahora habla del
+  estándar neutral y los nombra como ejemplo ("entre otros"), igual que la ayuda, el
+  resumen de los pasos y la línea que explica por qué no hace falta enlazar nada.
+- Las opciones tienen su forma en inglés: `--language`, `--yes`, `--assistants`,
+  `--no-links` y `--help` (y `--no-profile` en el instalador).
+- Un `--idioma` o un `--asistentes` sin su valor ya no se moría en silencio con código 1:
+  ahora lo dice y sale con 2.
+- Las pruebas pasan de 100 a 130 verificaciones. Las nuevas cuidan lo que puede fallar sin
+  hacer ruido: que los dos catálogos tengan exactamente las mismas claves, que ninguna
+  llamada pida una clave que no exista, y que el idioma funcione por bandera, por variable
+  y por idioma del sistema.
+
 ## v1.2.3
 
 - **El archivo de la convención se llama `.agents/README.md`**, no `.agents/LEEME.md`: el
