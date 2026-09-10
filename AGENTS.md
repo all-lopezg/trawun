@@ -39,13 +39,24 @@ los comandos de creación del modo `trawun y`.
 
 ## Antes de commitear y al publicar
 
+El ritual completo, en orden:
+
+1. `bash pruebas.sh` — verificaciones sobre carpetas temporales; 0 fallos
+2. Subir `VERSION` **en `trawun.sh` y en `instalar.sh`** (los dos, o el instalador miente)
+3. Anotar el cambio en `CHANGELOG.md`
+4. Commit, push, `git tag -a vX.Y.Z -m "vX.Y.Z — qué cambió"` y push del tag
+5. Publicar la página del release. Sin este paso el tag existe, pero quien visita el repo no
+   ve ninguna versión: la URL fijada funciona y la sección de Releases está vacía.
+
 ```bash
-bash pruebas.sh     # verificaciones sobre carpetas temporales; tiene que dar 0 fallos
+awk -v ver=vX.Y.Z '$0 ~ "^## " ver "($| )" {dentro=1; next} /^## / {dentro=0} dentro' \
+    CHANGELOG.md > /tmp/notas.md
+gh release create vX.Y.Z --title "vX.Y.Z — qué cambió" --notes-file /tmp/notas.md
 ```
 
-El ritual de publicación completo: subir `VERSION` **en `trawun.sh` y en `instalar.sh`**
-(los dos, o el instalador miente), anotar el cambio en `CHANGELOG.md`, commit, tag y push.
-Hay pruebas que verifican la coherencia de lo primero y la existencia de lo segundo.
+Los pasos 2 y 3 tienen prueba que los vigila. **Cuándo NO hay release**: cambios solo de
+pruebas o documentación — si `trawun.sh` no cambió, quien lo tenga instalado no gana nada
+actualizando, y un tag de más ensucia el historial.
 
 ## Estilo
 
