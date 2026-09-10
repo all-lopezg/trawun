@@ -1,5 +1,20 @@
 # Cambios
 
+## v1.3.1
+
+- **El idioma se infiere, no se pregunta.** La 1.3.0 preguntaba siempre que hubiera
+  terminal, con el idioma del sistema como opción por defecto; eso es fricción en algo que
+  la máquina ya sabe. Ahora sale del sistema donde corre el script (`LC_ALL`,
+  `LC_MESSAGES`, `LANG` y, en macOS, el idioma de las preferencias), sin interrumpir nada.
+  `--idioma` y `TRAWUN_IDIOMA` siguen mandando sobre eso.
+- **La pregunta queda como último recurso**: solo cuando el sistema no dice nada —`LANG=C`,
+  un contenedor sin locale— y hay terminal. Ahí adivinar sería peor que preguntar una vez.
+  Sin terminal, en ese mismo caso, se sigue en español.
+- De paso, `elegir_idioma` quedó más corto: el idioma pedido se resuelve una sola vez y el
+  del sistema no se consulta dos veces. Las pruebas pasan de 130 a 132 con la rama que casi
+  nunca se ve: un sistema sin locale conocido y sin terminal sigue en español, y la
+  variable manda incluso ahí.
+
 ## v1.3.0
 
 - **Trawün habla español e inglés.** El idioma se elige con `--idioma es|en` (o

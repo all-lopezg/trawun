@@ -426,7 +426,7 @@ for script in trawun.sh instalar.sh; do
 done
 
 # ---------------------------------------------------------------------------
-titulo "17. Idioma: se elige, se deduce y no se mezcla"
+titulo "17. Idioma: se deduce, se puede forzar y no se mezcla"
 
 # Se usa la variable TRAWUN_IDIOMA en casi todas las pruebas para que la corrida
 # no dependa del locale de quien las corre; acá se prueban las otras formas.
@@ -463,6 +463,19 @@ comprobar "TRAWUN_IDIOMA también manda sobre el sistema" \
 comprobar "sin elegir nada, se usa el idioma del sistema" \
     "$( cd "$P" && HOME="$BASE/hogar" LANG=en_US.UTF-8 bash "$TRAWUN" -y --no-links . 2>&1 \
         | grep -q 'What I am going to do' && echo 0 || echo 1 )"
+
+# El último recurso: un sistema que no dice nada (contenedor con LANG=C) y sin
+# terminal. En macOS las preferencias siempre contestan algo, así que se le
+# miente a `uname` para llegar hasta esa rama.
+mkdir -p "$BASE/bin-falso"
+printf '#!/bin/sh\necho Linux\n' > "$BASE/bin-falso/uname"
+chmod +x "$BASE/bin-falso/uname"
+comprobar "si el sistema no dice nada y no hay terminal, sigue en español" \
+    "$( cd "$P" && PATH="$BASE/bin-falso:$PATH" LC_ALL=C LANG=C HOME="$BASE/hogar" \
+        bash "$TRAWUN" -y --sin-enlaces . 2>&1 | grep -q 'Lo que voy a hacer' && echo 0 || echo 1 )"
+comprobar "y la variable sigue mandando incluso ahí" \
+    "$( cd "$P" && PATH="$BASE/bin-falso:$PATH" LC_ALL=C LANG=C TRAWUN_IDIOMA=en HOME="$BASE/hogar" \
+        bash "$TRAWUN" -y --no-links . 2>&1 | grep -q 'What I am going to do' && echo 0 || echo 1 )"
 
 # Un idioma que no existe se rechaza en vez de seguir en otro idioma a escondidas.
 ( cd "$P" && hogar_limpio -y --idioma pt . ) >/dev/null 2>&1

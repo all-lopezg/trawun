@@ -6,8 +6,9 @@
 # reglas en AGENTS.md y los skills en .agents/skills. Los pocos que usan carpeta
 # propia (Qoder, Copilot) reciben enlaces; el resto lee esas rutas directamente.
 #
-# Habla español e inglés. El idioma se elige con --idioma, con la variable
-# TRAWUN_IDIOMA, o se pregunta al empezar; sin terminal se deduce del sistema.
+# Habla español e inglés. El idioma sale del sistema donde se corre; --idioma y
+# la variable TRAWUN_IDIOMA lo cambian, y solo si el sistema no dice nada
+# (LANG=C, contenedores sin locale) se pregunta.
 #
 # Uso:  bash trawun.sh [opciones] [ruta-del-proyecto]        adapta lo que existe
 #       bash trawun.sh [opciones] y <comando-de-creacion>    crea y adapta
@@ -17,7 +18,7 @@
 #
 set -eu
 
-VERSION="1.3.0"
+VERSION="1.3.1"
 
 # ---------------------------------------------------------------------------
 # Presentación
@@ -53,7 +54,8 @@ ARTE
 #
 # Agregar un idioma es escribir otro mensaje_xx con las mismas claves y sus
 # plantillas; hay una prueba que compara las claves para que ninguna quede sin
-# traducir.
+# traducir. El idioma no se pregunta: se infiere del sistema donde corre el
+# script, que es lo que espera cualquiera que abra una terminal.
 # ---------------------------------------------------------------------------
 IDIOMA="es"
 IDIOMA_PEDIDO=""
@@ -74,8 +76,9 @@ normalizar_idioma() {
 }
 
 idioma_del_sistema() {
-    # Solo una pista para la opción por defecto: el idioma de la máquina no
-    # siempre es el que quiere quien corre el script.
+    # El idioma de la máquina donde corre el script. Devuelve vacío cuando no
+    # dice nada (LANG=C, contenedores sin locale), que no es lo mismo que decir
+    # español: quien decide eso es elegir_idioma.
     for valor in "${LC_ALL:-}" "${LC_MESSAGES:-}" "${LANG:-}"; do
         encontrado="$(normalizar_idioma "$valor")"
         [ -n "$encontrado" ] && { printf '%s' "$encontrado"; return 0; }
@@ -87,7 +90,7 @@ idioma_del_sistema() {
         [ -n "$encontrado" ] && { printf '%s' "$encontrado"; return 0; }
     fi
 
-    printf 'es'
+    printf ''
 }
 
 preguntar_idioma() {
@@ -106,21 +109,27 @@ preguntar_idioma() {
 }
 
 elegir_idioma() {
-    # Prioridad: la bandera, la variable de entorno, y si no se pregunta. Lo
-    # elegido a mano manda sobre el idioma de la máquina, siempre.
-    IDIOMA="$(idioma_del_sistema)"
+    # El idioma sale del sistema donde se corre el script, sin preguntar nada.
+    # Lo elegido a mano (bandera o variable) manda sobre eso, siempre. La
+    # pregunta queda como último recurso: solo cuando el sistema no dice nada,
+    # porque adivinar ahí sería peor que preguntar una vez.
+    del_sistema="$(idioma_del_sistema)"
 
-    if [ -z "$IDIOMA_PEDIDO" ]; then
-        IDIOMA_PEDIDO="${TRAWUN_IDIOMA:-}"
+    pedido="$IDIOMA_PEDIDO"
+    if [ -z "$pedido" ]; then
+        pedido="${TRAWUN_IDIOMA:-}"
     fi
-    if [ -z "$IDIOMA_PEDIDO" ]; then
-        IDIOMA_PEDIDO="${TRAWUN_LANG:-}"
+    if [ -z "$pedido" ]; then
+        pedido="${TRAWUN_LANG:-}"
     fi
 
-    if [ -n "$IDIOMA_PEDIDO" ] || [ "$IDIOMA_DADO" = "si" ]; then
-        elegido="$(normalizar_idioma "$IDIOMA_PEDIDO")"
+    IDIOMA="$del_sistema"
+    [ -z "$IDIOMA" ] && IDIOMA="es"
+
+    if [ -n "$pedido" ] || [ "$IDIOMA_DADO" = "si" ]; then
+        elegido="$(normalizar_idioma "$pedido")"
         if [ -z "$elegido" ]; then
-            printf '%s%s%s\n' "$ERROR" "$(decir idioma_desconocido "$IDIOMA_PEDIDO")" "$FIN" >&2
+            printf '%s%s%s\n' "$ERROR" "$(decir idioma_desconocido "$pedido")" "$FIN" >&2
             printf '%s\n' "$(decir idioma_conocidos)" >&2
             exit 2
         fi
@@ -128,7 +137,8 @@ elegir_idioma() {
         return 0
     fi
 
-    if [ "$PREGUNTAR_IDIOMA" = "si" ] && [ "$RESPUESTA_SI" != "si" ] && hay_terminal; then
+    if [ -z "$del_sistema" ] && [ "$PREGUNTAR_IDIOMA" = "si" ] \
+        && [ "$RESPUESTA_SI" != "si" ] && hay_terminal; then
         preguntar_idioma
     fi
 }
@@ -1438,7 +1448,8 @@ plantilla_ayuda_es() {
     -n, --dry-run          Muestra qué haría, sin tocar un solo archivo.
     -y, --si               Responde sí a todo. Útil para automatizar.
     -l, --idioma <es|en>   En qué idioma habla Trawün. También sirve la variable
-                           TRAWUN_IDIOMA. Sin esto, usa el del sistema.
+                           TRAWUN_IDIOMA. Sin esto lo deduce del sistema donde
+                           lo corras.
     --asistentes <lista>   Para qué asistentes crear enlaces, separados por
                            coma. Conocidos: qoder, copilot.
     --sin-enlaces          No crear enlaces de ningún asistente.
@@ -1491,8 +1502,8 @@ plantilla_ayuda_en() {
     -n, --dry-run           Shows what it would do, without touching a single file.
     -y, --yes               Answers yes to everything. Handy for automation.
     -l, --language <es|en>  Which language Trawün speaks. The TRAWUN_IDIOMA
-                            variable works too. Without it, it uses the system
-                            one.
+                            variable works too. Without it, it works it out
+                            from the system it runs on.
     --assistants <list>     Which assistants get links, comma separated.
                             Known: qoder, copilot.
     --no-links              Creates no assistant links at all.

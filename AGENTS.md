@@ -39,12 +39,14 @@ los catálogos tengan exactamente las mismas claves y que ninguna llamada pida u
 inexistente. Los comentarios e identificadores siguen en español, como el resto del
 código.
 
-El idioma se resuelve en este orden: `--idioma`, `TRAWUN_IDIOMA`, la pregunta al empezar
-(solo si hay terminal) y el idioma del sistema. **No se guarda en ningún lado**: Trawün no
-escribe fuera del proyecto, así que no hay configuración global que recordar; por eso las
-pruebas fijan `TRAWUN_IDIOMA` en vez de depender del locale de quien las corre. Ojo con
-los `printf`: una plantilla que empiece con `-` se come el formato como si fuera una
-opción.
+El idioma **se infiere, no se pregunta**: sale del sistema donde corre el script
+(`LC_ALL`, `LC_MESSAGES`, `LANG` y, en macOS, `AppleLocale`). `--idioma` y `TRAWUN_IDIOMA`
+lo cambian. La pregunta es el último recurso, solo cuando el sistema no dice nada
+(`LANG=C`, contenedores sin locale) y hay terminal. **No se guarda en ningún lado**:
+Trawün no escribe fuera del proyecto, así que no hay configuración global que recordar;
+por eso las pruebas fijan `TRAWUN_IDIOMA` en vez de depender del locale de quien las
+corre. Ojo con los `printf`: una plantilla que empiece con `-` se come el formato como si
+fuera una opción.
 
 ## Decisiones ya tomadas (no las "arregles")
 

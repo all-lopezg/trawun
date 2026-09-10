@@ -6,8 +6,8 @@
 cualquier proyecto listo para los asistentes que leen el estándar neutral — `AGENTS.md`
 y `.agents/skills/` — y crea los enlaces que **Qoder** necesita en `.qoder/skills/`.
 
-Habla español e inglés: la primera vez te pregunta en cuál, y después se elige con
-`--idioma en` o con `export TRAWUN_IDIOMA=en`.
+Habla español e inglés: lo deduce del idioma de tu sistema y no pregunta nada, y se
+cambia con `--language en` o con `export TRAWUN_IDIOMA=en`.
 
 ## Úsalo
 
@@ -93,13 +93,12 @@ cualquiera lo corre sin depender de internet y queda versionado junto al proyect
 
 ## Idioma
 
-Trawün habla español e inglés, y el idioma se elige así, en este orden:
+Trawün habla español e inglés, y **no te pregunta: lo saca del sistema donde lo corras**
+(`LC_ALL`, `LC_MESSAGES`, `LANG` y, en macOS, el idioma de tus preferencias). Si el
+sistema no dice nada —`LANG=C`, un contenedor sin locale— y hay terminal, ahí sí
+pregunta una vez.
 
-1. `--idioma es|en` (o `--language`) para esa corrida.
-2. `TRAWUN_IDIOMA`, que puedes exportar en tu perfil y olvidarte.
-3. Si no hay ninguna de las dos y hay terminal, **te pregunta**, con el idioma de tu
-   sistema como opción por defecto.
-4. Sin terminal (CI, scripts), el idioma del sistema.
+Puedes cambiarlo cuando quieras:
 
 ```bash
 trawun --idioma en              # esta corrida, en inglés
@@ -275,10 +274,10 @@ cd your-project
 curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | bash
 ```
 
-It speaks Spanish and English: it asks you once, and after that you can pin it with
-`--language en` or `export TRAWUN_IDIOMA=en`. Everything it prints and everything it
-writes into the project (the starter `AGENTS.md`, the `.agents/README.md`, the backup
-README and the Boost config) comes out in the language you chose.
+It speaks Spanish and English: it picks the language of the system it runs on and never
+asks, and you can switch it with `--language en` or `export TRAWUN_IDIOMA=en`. Everything
+it prints and everything it writes into the project (the starter `AGENTS.md`, the
+`.agents/README.md`, the backup README and the Boost config) comes out in that language.
 
 It can also create the project for you: `trawun y cargo new gestor` runs your command, finds
 the new folder, and adapts it. Install it as a command with `instalar.sh`, or run `--dry-run`

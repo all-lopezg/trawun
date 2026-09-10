@@ -11,12 +11,13 @@
 # escribe en tu carpeta de usuario, porque es exactamente su trabajo — y siempre
 # te pregunta antes.
 #
-# Habla español e inglés, igual que trawun.sh: el idioma se elige con --idioma,
-# con la variable TRAWUN_IDIOMA, o se pregunta al empezar.
+# Habla español e inglés, igual que trawun.sh: el idioma sale del sistema donde
+# se corre, --idioma y TRAWUN_IDIOMA lo cambian, y solo si el sistema no dice
+# nada se pregunta.
 #
 set -eu
 
-VERSION="1.3.0"
+VERSION="1.3.1"
 REPO="all-lopezg/trawun"
 RAMIFICACION="main"
 
@@ -56,6 +57,9 @@ normalizar_idioma() {
 }
 
 idioma_del_sistema() {
+    # El idioma de la máquina donde corre el script. Devuelve vacío cuando no
+    # dice nada (LANG=C, contenedores sin locale), que no es lo mismo que decir
+    # español: quien decide eso es elegir_idioma.
     for valor in "${LC_ALL:-}" "${LC_MESSAGES:-}" "${LANG:-}"; do
         encontrado="$(normalizar_idioma "$valor")"
         [ -n "$encontrado" ] && { printf '%s' "$encontrado"; return 0; }
@@ -67,7 +71,7 @@ idioma_del_sistema() {
         [ -n "$encontrado" ] && { printf '%s' "$encontrado"; return 0; }
     fi
 
-    printf 'es'
+    printf ''
 }
 
 preguntar_idioma() {
@@ -85,19 +89,27 @@ preguntar_idioma() {
 }
 
 elegir_idioma() {
-    IDIOMA="$(idioma_del_sistema)"
+    # El idioma sale del sistema donde se corre el script, sin preguntar nada.
+    # Lo elegido a mano (bandera o variable) manda sobre eso, siempre. La
+    # pregunta queda como último recurso: solo cuando el sistema no dice nada,
+    # porque adivinar ahí sería peor que preguntar una vez.
+    del_sistema="$(idioma_del_sistema)"
 
-    if [ -z "$IDIOMA_PEDIDO" ]; then
-        IDIOMA_PEDIDO="${TRAWUN_IDIOMA:-}"
+    pedido="$IDIOMA_PEDIDO"
+    if [ -z "$pedido" ]; then
+        pedido="${TRAWUN_IDIOMA:-}"
     fi
-    if [ -z "$IDIOMA_PEDIDO" ]; then
-        IDIOMA_PEDIDO="${TRAWUN_LANG:-}"
+    if [ -z "$pedido" ]; then
+        pedido="${TRAWUN_LANG:-}"
     fi
 
-    if [ -n "$IDIOMA_PEDIDO" ] || [ "$IDIOMA_DADO" = "si" ]; then
-        elegido="$(normalizar_idioma "$IDIOMA_PEDIDO")"
+    IDIOMA="$del_sistema"
+    [ -z "$IDIOMA" ] && IDIOMA="es"
+
+    if [ -n "$pedido" ] || [ "$IDIOMA_DADO" = "si" ]; then
+        elegido="$(normalizar_idioma "$pedido")"
         if [ -z "$elegido" ]; then
-            printf '%s%s%s\n' "$ERROR" "$(decir idioma_desconocido "$IDIOMA_PEDIDO")" "$FIN" >&2
+            printf '%s%s%s\n' "$ERROR" "$(decir idioma_desconocido "$pedido")" "$FIN" >&2
             printf '%s\n' "$(decir idioma_conocidos)" >&2
             exit 2
         fi
@@ -105,7 +117,7 @@ elegir_idioma() {
         return 0
     fi
 
-    if [ "$PREGUNTAR_IDIOMA" = "si" ] && hay_terminal; then
+    if [ -z "$del_sistema" ] && [ "$PREGUNTAR_IDIOMA" = "si" ] && hay_terminal; then
         preguntar_idioma
     fi
 }
@@ -446,7 +458,8 @@ plantilla_ayuda_es() {
     --perfil <ruta>       Archivo de perfil a modificar si falta el PATH
     --sin-perfil          Nunca tocar el perfil; solo avisar
     -l, --idioma <es|en>  En qué idioma habla el instalador. También sirve la
-                          variable TRAWUN_IDIOMA. Sin esto, usa el del sistema.
+                          variable TRAWUN_IDIOMA. Sin esto lo deduce del sistema
+                          donde lo corras.
     -h, --ayuda           Muestra esta ayuda
 
   Las opciones también tienen su nombre en inglés: --language, --no-profile
@@ -481,7 +494,7 @@ plantilla_ayuda_en() {
     --no-profile            Never touch the profile; just warn
     -l, --language <es|en>  Which language the installer speaks. The
                             TRAWUN_IDIOMA variable works too. Without it, it
-                            uses the system one.
+                            works it out from the system it runs on.
     -h, --help              Shows this help
 
   The options also work with their Spanish names: --idioma, --sin-perfil
