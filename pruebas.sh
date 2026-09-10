@@ -219,6 +219,40 @@ existe "$P/.qoder/skills/insforge/SKILL.md" "el enlace sigue resolviendo"
 comprobar "no duplicó el skill" "$( [ "$(find "$P/.agents/skills" -type f | wc -l | tr -d ' ')" = "1" ] && echo 0 || echo 1 )"
 comprobar "el enlace sigue siendo enlace" "$( [ -L "$P/.qoder/skills/insforge" ] && echo 0 || echo 1 )"
 
+titulo "16. Coherencia del propio repositorio"
+
+REPO="$(cd "$(dirname "$0")" && pwd)"
+
+version_trawun="$(grep -m1 '^VERSION=' "$REPO/trawun.sh" | cut -d'"' -f2)"
+version_instalador="$(grep -m1 '^VERSION=' "$REPO/instalar.sh" | cut -d'"' -f2)"
+
+# Si las dos versiones se separan, el instalador reporta una versión falsa y nadie
+# lo nota hasta que alguien lo instala.
+comprobar "trawun.sh e instalar.sh declaran la misma versión ($version_trawun)" \
+    "$( [ "$version_trawun" = "$version_instalador" ] && echo 0 || echo 1 )"
+
+# Cada versión publicada necesita su sección, o el tag queda sin explicación.
+if grep -qE "^## v${version_trawun}([[:space:]]|$)" "$REPO/CHANGELOG.md" 2>/dev/null; then
+    comprobar "CHANGELOG.md tiene la entrada de la v$version_trawun" "0"
+else
+    comprobar "CHANGELOG.md tiene la entrada de la v$version_trawun" "1"
+fi
+
+# Sintaxis que solo existe en bash 4 y rompería en el macOS de cualquiera.
+# Se revisan los dos scripts que corren en la máquina del usuario.
+patron_bash4='declare -A|mapfile|readarray|\$\{[A-Za-z_]+,,\}'
+encontrados="$(grep -nE "$patron_bash4" "$REPO/trawun.sh" "$REPO/instalar.sh" 2>/dev/null | head -3)"
+
+if [ -z "$encontrados" ]; then
+    comprobar "sin sintaxis exclusiva de bash 4" "0"
+else
+    comprobar "sin sintaxis exclusiva de bash 4" "1"
+    printf '%s\n' "$encontrados" | sed 's/^/       /'
+fi
+
+# El bit de ejecución se pierde fácil y rompe el uso más obvio: ./trawun.sh
+comprobar "trawun.sh tiene permiso de ejecución" "$( [ -x "$REPO/trawun.sh" ] && echo 0 || echo 1 )"
+
 # ---------------------------------------------------------------------------
 printf '\n────────────────────────────────────────────\n'
 if [ "$FALLOS" -gt 0 ]; then
