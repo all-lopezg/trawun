@@ -1,5 +1,19 @@
 # Cambios
 
+## v1.1.0
+
+- **Modo crear**: `trawun y <comando>` corre tu comando de creación, detecta la carpeta que
+  apareció (por diferencia antes/después, no adivinando el nombre), entra y adapta el proyecto.
+  Ofrece `git init` si el generador no lo hizo, y nunca adapta la carpeta actual por error.
+- **Los enlaces de asistente son opcionales**: `--asistentes qoder,copilot` o `--sin-enlaces`.
+  Sin flags, Trawün detecta qué hay instalado y pregunta. Si no detecta nada, no crea nada.
+- **Cursor salió de la lista**: su documentación dice que lee `.agents/skills/` directamente, así
+  que crearle `.cursor/skills/` sería trabajo inútil. Quedan Qoder y Copilot, que sí usan carpeta
+  propia.
+- Las pruebas pasaron de 22 a 50 verificaciones, e incluyen los escenarios de creación y de
+  asistentes. Antes dependían de que Qoder estuviera instalado en la máquina; ahora son
+  deterministas.
+
 ## v1.0.1
 
 - **`instalar.sh`** — nuevo: deja el comando `trawun` disponible en el PATH. Elige

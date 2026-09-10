@@ -13,6 +13,16 @@ cd tu-proyecto
 curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | bash
 ```
 
+¿El proyecto todavía no existe? Trawün lo crea y lo adapta de una vez:
+
+```bash
+trawun y cargo new gestor
+trawun y composer create-project artisan-build/laravel-nodeless mi-app
+```
+
+Corre tu comando de creación tal cual —con su salida y sus preguntas a la vista—, detecta
+la carpeta que apareció, entra y aplica lo mismo de abajo.
+
 Eso es todo. Antes de tocar nada, Trawün:
 
 - **Te muestra el plan y te pide confirmación.** Nada pasa sin que lo autorices.
@@ -78,6 +88,32 @@ trawun
 **¿Y si eres un equipo?** Descarguen `trawun.sh` al repositorio y commitéenlo. Así
 cualquiera lo corre sin depender de internet y queda versionado junto al proyecto.
 
+## Para qué asistentes
+
+Casi todos leen el estándar neutral directamente, así que **no necesitan nada**:
+
+| Asistente | De dónde lee los skills |
+|---|---|
+| DSH | `.agents/skills/` |
+| Codex | `.agents/skills/` |
+| Cursor | `.agents/skills/` (está en su [documentación](https://cursor.com/help/customization/skills.md)) |
+| Zed, Amp, OpenCode, Antigravity | `.agents/skills/` |
+
+Unos pocos usan una carpeta propia, y esos sí reciben enlaces:
+
+| Asistente | Su carpeta | Cómo pedirlo |
+|---|---|---|
+| **Qoder** | `.qoder/skills/` | `--asistentes qoder` |
+| **Copilot** | `.github/skills/` | `--asistentes copilot` |
+
+Si no pasas `--asistentes`, Trawün mira qué tienes instalado y **te pregunta**; si no detecta
+ninguno, no crea enlaces y sigue. Así tu repo no se llena de carpetas de asistentes que no usas.
+
+```bash
+trawun --asistentes qoder,copilot    # los dos
+trawun --sin-enlaces                 # ninguno, solo AGENTS.md y .agents/skills
+```
+
 ## Qué hace
 
 1. **Mira qué trae el proyecto**: `CLAUDE.md`, `.claude/`, `.mcp.json`, `AGENTS.md`,
@@ -104,7 +140,7 @@ tu-proyecto/
 ├── AGENTS.md            ← las reglas, que leen DSH, Qoder, Codex, Cursor, Zed…
 ├── .agents/skills/      ← los skills reales, una sola copia
 │   └── mi-skill/SKILL.md
-├── .qoder/skills/       ← enlaces a los anteriores, para Qoder
+├── .qoder/skills/       ← enlaces, solo si pediste Qoder (o .github/skills para Copilot)
 │   └── mi-skill -> ../../.agents/skills/mi-skill
 └── .agentes-respaldo/   ← lo que traía para Claude Code (puedes borrarlo)
 ```
@@ -115,6 +151,8 @@ tu-proyecto/
 |---|---|
 | `-n`, `--dry-run` | Muestra qué haría, sin tocar un solo archivo |
 | `-y`, `--si` | Responde sí a todo (para automatizar) |
+| `--asistentes <lista>` | Para qué asistentes crear enlaces: `qoder`, `copilot` |
+| `--sin-enlaces` | No crear enlaces de ningún asistente |
 | `-h`, `--ayuda` | Muestra la ayuda |
 | `-v`, `--version` | Muestra la versión |
 
@@ -122,6 +160,8 @@ tu-proyecto/
 trawun -n                       # simular sobre el proyecto actual
 trawun ~/mi-proyecto            # adaptar otra carpeta
 trawun -y                       # sin preguntas
+trawun --asistentes qoder       # enlaces solo para Qoder
+trawun y cargo new gestor       # crear el proyecto y adaptarlo
 ```
 
 Con `curl | bash` la entrada estándar es el propio script, así que para pasarle opciones
@@ -144,6 +184,11 @@ curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | 
 **¿Sirve para Rust, React, HTMX, Go…?**
 Sí. El contrato es el mismo para todos: markdown y enlaces, nada específico de un
 lenguaje. Si el proyecto no trae nada de agentes, Trawün siembra la estructura.
+
+**¿Trawün crea enlaces para todos los asistentes?**
+No, y es a propósito. Solo hacen falta para los que usan carpeta propia (Qoder, Copilot); el
+resto lee `.agents/skills/` directamente. Crear carpetas que nadie va a leer es justamente la
+clase de ruido que Trawün intenta evitar.
 
 **¿Y si mi proyecto trae `.mcp.json`?**
 Trawün te pregunta: **Qoder sí lee ese archivo** (alcance de proyecto), pero cada
@@ -181,7 +226,10 @@ cd your-project
 curl -fsSL https://raw.githubusercontent.com/all-lopezg/trawun/main/trawun.sh | bash
 ```
 
-Install it as a command with `instalar.sh`, or run `--dry-run` to see the plan first.
+It can also create the project for you: `trawun y cargo new gestor` runs your command, finds
+the new folder, and adapts it. Install it as a command with `instalar.sh`, or run `--dry-run`
+to see the plan first. Only assistants with their own skills folder need symlinks (Qoder,
+Copilot); DSH, Codex, Cursor, Zed and friends read `.agents/skills/` directly.
 It never writes outside the project, never installs skills globally, never deletes
 anything (it moves it to `.agentes-respaldo/`), and never commits. Works with bash 3.2+
 (including macOS's ancient bash).
